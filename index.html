@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <!-- Stili CSS -->
-  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
   <div id="app">
@@ -29,6 +29,9 @@
         <div class="brand-title">HEVY<span>TRACK</span></div>
       </div>
       <div class="header-actions">
+        <button id="cloud-sync-pill" class="cloud-sync-pill syncing" title="Sincronizzazione Cloud Live (tocca per sincronizzare)">
+          <span class="cloud-dot"></span><span>Sync...</span>
+        </button>
         <button id="btn-open-settings" class="icon-btn" title="Impostazioni e Backup" aria-label="Impostazioni">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
@@ -423,6 +426,19 @@
       </div>
       <div class="modal-body">
         
+        <h4 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: var(--accent-green);">☁️ Sincronizzazione Cloud Live (Firebase)</h4>
+        <div class="card mb-4">
+          <div id="cloud-sync-status-detail" style="font-size: 0.82rem; color: var(--text-primary); font-weight: 600; margin-bottom: 8px;">
+            Connessione a Firebase Cloud...
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">
+            Ogni allenamento salvato sul tuo iPhone si sincronizza automaticamente in tempo reale con il Mac e con il link del tuo allenatore (funziona anche offline in palestra).
+          </p>
+          <button type="button" id="btn-sync-now" class="btn btn-primary btn-sm btn-block">
+            ☁️ Sincronizza Ora con il Cloud
+          </button>
+        </div>
+
         <h4 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: var(--accent-blue);">Timer & Feedback</h4>
         <div class="card mb-4">
           <label style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; cursor: pointer;">
@@ -480,13 +496,18 @@
   <!-- Libreria Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+  <!-- Firebase SDK (Cloud Firestore Sync in tempo reale) -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+
   <!-- Moduli Applicazione -->
-  <script src="js/data.js?v=3"></script>
-  <script src="js/anatomy.js?v=3"></script>
-  <script src="js/store.js?v=3"></script>
-  <script src="js/timer.js?v=3"></script>
-  <script src="js/charts.js?v=3"></script>
-  <script src="js/app.js?v=3"></script>
+  <script src="js/data.js?v=4"></script>
+  <script src="js/anatomy.js?v=4"></script>
+  <script src="js/store.js?v=4"></script>
+  <script src="js/cloud.js?v=4"></script>
+  <script src="js/timer.js?v=4"></script>
+  <script src="js/charts.js?v=4"></script>
+  <script src="js/app.js?v=4"></script>
 
   <!-- Registrazione Service Worker PWA con aggiornamento automatico -->
   <script>
@@ -500,9 +521,9 @@
 
         let refreshing = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v3")) {
+          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v4")) {
             refreshing = true;
-            sessionStorage.setItem("sw_reloaded_v3", "1");
+            sessionStorage.setItem("sw_reloaded_v4", "1");
             window.location.reload();
           }
         });

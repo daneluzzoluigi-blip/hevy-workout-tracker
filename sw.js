@@ -1,20 +1,21 @@
 /**
  * Service Worker per Hevy Gym Tracker
- * Network-First per HTML/JS/CSS così gli aggiornamenti su iPhone arrivano subito,
- * con fallback automatico offline su cache.
+ * Network-First solo per asset same-origin (HTML/JS/CSS),
+ * lasciando passare direttamente gli stream Firebase Firestore senza interferenze.
  */
 
-const CACHE_NAME = "hevy-gym-v3";
+const CACHE_NAME = "hevy-gym-v4";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
-  "./css/style.css?v=3",
-  "./js/data.js?v=3",
-  "./js/anatomy.js?v=3",
-  "./js/store.js?v=3",
-  "./js/timer.js?v=3",
-  "./js/charts.js?v=3",
-  "./js/app.js?v=3",
+  "./css/style.css?v=4",
+  "./js/data.js?v=4",
+  "./js/anatomy.js?v=4",
+  "./js/store.js?v=4",
+  "./js/cloud.js?v=4",
+  "./js/timer.js?v=4",
+  "./js/charts.js?v=4",
+  "./js/app.js?v=4",
   "./manifest.json",
   "./icons/favicon.svg",
   "./icons/icon-192.png",
@@ -52,8 +53,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Network-first: prende sempre la versione aggiornata quando c'è rete (iPhone PWA),
-  // e salva in cache per l'uso offline in palestra.
+  // Non intercettare richieste cross-origin (es. Firebase Firestore / CDN)
+  const reqUrl = new URL(event.request.url);
+  if (reqUrl.origin !== self.location.origin) {
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
