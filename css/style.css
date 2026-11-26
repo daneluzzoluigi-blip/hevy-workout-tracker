@@ -1371,3 +1371,77 @@ input, textarea {
   line-height: 1.35;
   white-space: pre-line;
 }
+
+
+/* ==========================================================================
+   CLOUD SYNC STATUS PILL (HEADER)
+   ========================================================================== */
+.cloud-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.cloud-sync-pill:active {
+  transform: scale(0.95);
+}
+
+.cloud-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+}
+
+.cloud-sync-pill.synced {
+  background-color: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.35);
+  color: #34d399;
+}
+
+.cloud-sync-pill.synced .cloud-dot {
+  background-color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+}
+
+.cloud-sync-pill.syncing {
+  background-color: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+.cloud-sync-pill.syncing .cloud-dot {
+  background-color: #3b82f6;
+  animation: pulseDot 1.1s infinite;
+}
+
+.cloud-sync-pill.offline {
+  background-color: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.cloud-sync-pill.offline .cloud-dot {
+  background-color: #f59e0b;
+}
+
+.cloud-sync-pill.error {
+  background-color: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.cloud-sync-pill.error .cloud-dot {
+  background-color: #ef4444;
+}
