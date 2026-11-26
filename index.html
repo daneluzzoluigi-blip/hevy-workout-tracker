@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <!-- Stili CSS -->
-  <link rel="stylesheet" href="css/style.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
   <div id="app">
@@ -523,6 +523,77 @@
     </div>
   </div>
 
+  <!-- 6. Modal Modifica Sessione Salvata (Storico) -->
+  <div class="modal-overlay" id="modal-history-editor">
+    <div class="modal-content" style="max-height: 92vh;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">✏️ Modifica Sessione</h3>
+          <div style="font-size: 0.74rem; color: var(--text-muted);">Correggi settimana, carichi, rep, tag o note</div>
+        </div>
+        <button type="button" class="icon-btn close-modal-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-hist-id" value="">
+
+        <div class="form-group">
+          <label class="form-label" for="edit-hist-name">Nome Sessione</label>
+          <input type="text" id="edit-hist-name" class="form-input" placeholder="es. Sett 5 • Giorno 1 – Pull">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 8px;" class="form-group">
+          <div>
+            <label class="form-label" for="edit-hist-week">Settimana</label>
+            <select id="edit-hist-week" class="form-select" style="font-size: 0.84rem;">
+              <option value="">Libera</option>
+              <option value="1">Sett 1</option>
+              <option value="2">Sett 2</option>
+              <option value="3">Sett 3</option>
+              <option value="4">Sett 4</option>
+              <option value="5">Sett 5</option>
+              <option value="6">Sett 6</option>
+              <option value="7">Sett 7</option>
+              <option value="8">Sett 8</option>
+              <option value="9">Sett 9</option>
+              <option value="10">Sett 10</option>
+              <option value="11">Sett 11</option>
+              <option value="12">Sett 12</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="edit-hist-day">Giorno</label>
+            <select id="edit-hist-day" class="form-select" style="font-size: 0.84rem;">
+              <option value="">Nessuno</option>
+              <option value="1">Giorno 1</option>
+              <option value="2">Giorno 2</option>
+              <option value="3">Giorno 3</option>
+              <option value="4">Giorno 4</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="edit-hist-duration">Minuti</label>
+            <input type="number" id="edit-hist-duration" class="form-input" style="font-size: 0.84rem;" min="1" value="60">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 14px 0 10px 0;">
+          <label class="form-label" style="margin: 0;">Esercizi Registrati</label>
+          <button type="button" id="btn-hist-editor-add-exercise" class="btn btn-secondary btn-sm">
+            + Aggiungi Esercizio
+          </button>
+        </div>
+
+        <div id="editor-history-exercises-list">
+          <!-- Popolato dinamicamente da app.js -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary close-modal-btn">Annulla</button>
+        <button type="button" id="btn-save-history-edit" class="btn btn-primary">Salva Modifiche</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notifica Rapida -->
   <div id="app-toast" class="toast-msg"></div>
 
@@ -538,14 +609,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
   <!-- Moduli Applicazione -->
-  <script src="js/data.js?v=8"></script>
-  <script src="js/anatomy.js?v=8"></script>
-  <script src="js/store.js?v=8"></script>
-  <script src="js/cloud.js?v=8"></script>
-  <script src="js/timer.js?v=8"></script>
-  <script src="js/charts.js?v=8"></script>
-  <script src="js/report.js?v=8"></script>
-  <script src="js/app.js?v=8"></script>
+  <script src="js/data.js?v=9"></script>
+  <script src="js/anatomy.js?v=9"></script>
+  <script src="js/store.js?v=9"></script>
+  <script src="js/cloud.js?v=9"></script>
+  <script src="js/timer.js?v=9"></script>
+  <script src="js/charts.js?v=9"></script>
+  <script src="js/report.js?v=9"></script>
+  <script src="js/app.js?v=9"></script>
 
   <!-- Registrazione Service Worker PWA con aggiornamento automatico -->
   <script>
@@ -559,9 +630,9 @@
 
         let refreshing = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v8")) {
+          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v9")) {
             refreshing = true;
-            sessionStorage.setItem("sw_reloaded_v8", "1");
+            sessionStorage.setItem("sw_reloaded_v9", "1");
             window.location.reload();
           }
         });

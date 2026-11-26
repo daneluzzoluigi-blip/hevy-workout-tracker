@@ -4,19 +4,19 @@
  * lasciando passare direttamente gli stream Firebase Firestore senza interferenze.
  */
 
-const CACHE_NAME = "hevy-gym-v8";
+const CACHE_NAME = "hevy-gym-v9";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
-  "./css/style.css?v=8",
-  "./js/data.js?v=8",
-  "./js/anatomy.js?v=8",
-  "./js/store.js?v=8",
-  "./js/cloud.js?v=8",
-  "./js/timer.js?v=8",
-  "./js/charts.js?v=8",
-  "./js/report.js?v=8",
-  "./js/app.js?v=8",
+  "./css/style.css?v=9",
+  "./js/data.js?v=9",
+  "./js/anatomy.js?v=9",
+  "./js/store.js?v=9",
+  "./js/cloud.js?v=9",
+  "./js/timer.js?v=9",
+  "./js/charts.js?v=9",
+  "./js/report.js?v=9",
+  "./js/app.js?v=9",
   "./manifest.json",
   "./icons/favicon.svg",
   "./icons/icon-192.png",
