@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <!-- Stili CSS -->
-  <link rel="stylesheet" href="css/style.css?v=12">
+  <link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
   <div id="app">
@@ -614,14 +614,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
   <!-- Moduli Applicazione -->
-  <script src="js/data.js?v=12"></script>
-  <script src="js/anatomy.js?v=12"></script>
-  <script src="js/store.js?v=12"></script>
-  <script src="js/cloud.js?v=12"></script>
-  <script src="js/timer.js?v=12"></script>
-  <script src="js/charts.js?v=12"></script>
-  <script src="js/report.js?v=12"></script>
-  <script src="js/app.js?v=12"></script>
+  <script src="js/data.js?v=13"></script>
+  <script src="js/anatomy.js?v=13"></script>
+  <script src="js/store.js?v=13"></script>
+  <script src="js/cloud.js?v=13"></script>
+  <script src="js/timer.js?v=13"></script>
+  <script src="js/charts.js?v=13"></script>
+  <script src="js/report.js?v=13"></script>
+  <script src="js/app.js?v=13"></script>
 
   <!-- Registrazione Service Worker PWA con aggiornamento automatico -->
   <script>
@@ -635,9 +635,9 @@
 
         let refreshing = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v12")) {
+          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v13")) {
             refreshing = true;
-            sessionStorage.setItem("sw_reloaded_v12", "1");
+            sessionStorage.setItem("sw_reloaded_v13", "1");
             window.location.reload();
           }
         });
