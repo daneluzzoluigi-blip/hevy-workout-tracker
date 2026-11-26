@@ -79,20 +79,19 @@ input, textarea {
   margin: 0 auto;
   position: relative;
   background-color: var(--bg-app);
-  padding-top: var(--safe-top);
   padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
 }
 
-/* Top App Header */
+/* Top App Header (rispetta la Safe Area / Dynamic Island iOS anche in scroll) */
 .app-header {
   position: sticky;
   top: 0;
   z-index: 40;
-  background-color: rgba(9, 9, 11, 0.92);
+  background-color: rgba(9, 9, 11, 0.94);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
-  padding: 12px 16px;
+  padding: calc(var(--safe-top) + 12px) 16px 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -439,7 +438,7 @@ input, textarea {
   padding: 14px;
   margin-bottom: 16px;
   position: sticky;
-  top: 56px;
+  top: calc(var(--safe-top) + 60px);
   z-index: 30;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
