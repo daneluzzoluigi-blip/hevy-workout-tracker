@@ -33,6 +33,12 @@ const App = {
     Store.init();
     RestTimer.init();
 
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      document.body.classList.add("demo-mode");
+      const banner = document.getElementById("demo-mode-banner");
+      if (banner) banner.style.display = "flex";
+    }
+
     const uiState = Store.getUiState();
     this.selectedProgramId = uiState.programId || "prog_pdf_s1_s4";
     this.selectedWeek = uiState.week !== undefined ? uiState.week : 1;
@@ -399,6 +405,10 @@ const App = {
   },
 
   openRoutineEditor(routineId = null) {
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      this.showToast("🔒 Modalità Demo (sola lettura): modifica schede disabilitata.");
+      return;
+    }
     const modal = document.getElementById("modal-routine-editor");
     const titleEl = document.getElementById("routine-editor-title");
     const idEl = document.getElementById("edit-routine-id");
@@ -593,6 +603,10 @@ const App = {
   },
 
   duplicateRoutine(id) {
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      this.showToast("🔒 Modalità Demo (sola lettura).");
+      return;
+    }
     const copy = Store.duplicateRoutine(id);
     if (copy) {
       this.renderRoutines();
@@ -602,6 +616,10 @@ const App = {
   },
 
   deleteRoutine(id) {
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      this.showToast("🔒 Modalità Demo (sola lettura).");
+      return;
+    }
     const routine = Store.getRoutineById(id);
     if (!routine) return;
     if (confirm(`Sei sicuro di voler eliminare la scheda "${routine.name}"?`)) {
@@ -1213,6 +1231,11 @@ const App = {
   finishActiveWorkout() {
     if (!this.activeWorkout) return;
 
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      this.showToast("🔒 Modalità Demo: nessun dato salvato. Nella versione completa si sincronizza live su Cloud e PDF!");
+      return;
+    }
+
     let completedSetsCount = 0;
     let totalVolume = 0;
     const exercisesData = [];
@@ -1610,6 +1633,10 @@ const App = {
   },
 
   deleteHistoryItem(id) {
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      this.showToast("🔒 Modalità Demo (sola lettura).");
+      return;
+    }
     if (confirm("Eliminare questa sessione dallo storico?")) {
       Store.deleteHistorySession(id);
       this.renderHistoryList();
@@ -1622,6 +1649,10 @@ const App = {
 
   // --- EDITOR SESSIONI GIÀ SALVATE (STORICO) ---
   openHistoryEditor(sessionId) {
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      this.showToast("🔒 Modalità Demo (sola lettura): modifica storico disabilitata.");
+      return;
+    }
     const history = Store.getHistory();
     const session = history.find(h => h.id === sessionId);
     if (!session) return;

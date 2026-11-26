@@ -3,6 +3,16 @@
  * Calcoli 1RM, Sovraccarico Progressivo, Programmi Settimanali e Backup JSON
  */
 
+const IS_DEMO_MODE = (() => {
+  try {
+    if (typeof window === "undefined" || !window.location) return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("demo") === "1" || params.get("mode") === "demo";
+  } catch (e) {
+    return false;
+  }
+})();
+
 const STORAGE_KEYS = {
   ROUTINES: "hevy_routines_v1",
   HISTORY: "hevy_history_v1",
@@ -28,7 +38,25 @@ const LEGACY_SAMPLE_HISTORY_IDS = new Set([
 ]);
 
 const Store = {
+  _demoState: null,
+
   init() {
+    if (IS_DEMO_MODE) {
+      this._demoState = {
+        routines: JSON.parse(JSON.stringify(DEFAULT_ROUTINES)),
+        history: JSON.parse(JSON.stringify(generateDefaultHistory())),
+        activeWorkout: null,
+        uiState: { programId: "prog_pdf_s1_s4", week: 1 },
+        settings: {
+          soundEnabled: true,
+          vibrationEnabled: true,
+          defaultTimerIncrement: 15,
+          theme: "dark"
+        }
+      };
+      return;
+    }
+
     const currentVersion = localStorage.getItem(STORAGE_KEYS.DATA_VERSION);
     const hasRoutines = !!localStorage.getItem(STORAGE_KEYS.ROUTINES);
     const hasHistory = !!localStorage.getItem(STORAGE_KEYS.HISTORY);
@@ -92,6 +120,7 @@ const Store = {
 
   // --- UI STATE ---
   getUiState() {
+    if (IS_DEMO_MODE && this._demoState) return this._demoState.uiState;
     try {
       const data = localStorage.getItem(STORAGE_KEYS.UI_STATE);
       return data ? JSON.parse(data) : { programId: "prog_pdf_s1_s4", week: 1 };
@@ -101,11 +130,16 @@ const Store = {
   },
 
   setUiState(state) {
+    if (IS_DEMO_MODE && this._demoState) {
+      this._demoState.uiState = state;
+      return;
+    }
     localStorage.setItem(STORAGE_KEYS.UI_STATE, JSON.stringify(state));
   },
 
   // --- ROUTINES ---
   getRoutines() {
+    if (IS_DEMO_MODE && this._demoState) return this._demoState.routines;
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ROUTINES);
       return data ? JSON.parse(data) : [];
@@ -116,6 +150,7 @@ const Store = {
   },
 
   setRoutines(routines, skipCloud = false) {
+    if (IS_DEMO_MODE) return;
     localStorage.setItem(STORAGE_KEYS.ROUTINES, JSON.stringify(routines));
     if (!skipCloud && typeof CloudSync !== "undefined") {
       CloudSync.schedulePushRoutines();
@@ -128,6 +163,7 @@ const Store = {
   },
 
   saveRoutine(routine) {
+    if (IS_DEMO_MODE) return null;
     const list = this.getRoutines();
     const index = list.findIndex(r => r.id === routine.id);
     routine.updatedAt = new Date().toISOString();
@@ -143,6 +179,7 @@ const Store = {
   },
 
   duplicateRoutine(id) {
+    if (IS_DEMO_MODE) return null;
     const orig = this.getRoutineById(id);
     if (!orig) return null;
     const copy = JSON.parse(JSON.stringify(orig));
@@ -156,6 +193,7 @@ const Store = {
   },
 
   deleteRoutine(id) {
+    if (IS_DEMO_MODE) return;
     const list = this.getRoutines().filter(r => r.id !== id);
     const del = Array.from(new Set([...this.getDeletedRoutineIds(), id]));
     this.setDeletedRoutineIds(del);
@@ -172,6 +210,9 @@ const Store = {
 
   // --- STORICO ALLENAMENTI ---
   getHistory() {
+    if (IS_DEMO_MODE && this._demoState) {
+      return [...this._demoState.history].sort((a, b) => new Date(b.date) - new Date(a.date));
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.HISTORY);
       const list = data ? JSON.parse(data) : [];
@@ -183,6 +224,7 @@ const Store = {
   },
 
   setHistory(history, skipCloud = false) {
+    if (IS_DEMO_MODE) return;
     localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
     if (!skipCloud && typeof CloudSync !== "undefined") {
       CloudSync.schedulePushHistory();
@@ -190,6 +232,7 @@ const Store = {
   },
 
   deleteHistorySession(id) {
+    if (IS_DEMO_MODE) return;
     const history = this.getHistory().filter(h => h.id !== id);
     const del = Array.from(new Set([...this.getDeletedHistoryIds(), id]));
     this.setDeletedHistoryIds(del);
@@ -197,6 +240,7 @@ const Store = {
   },
 
   updateHistorySession(updatedSession) {
+    if (IS_DEMO_MODE) return null;
     const history = this.getHistory();
     const idx = history.findIndex(h => h.id === updatedSession.id);
     updatedSession.updatedAt = new Date().toISOString();
@@ -210,6 +254,7 @@ const Store = {
   },
 
   saveWorkoutSession(session, updateRoutineDefaults = true) {
+    if (IS_DEMO_MODE) return;
     const history = this.getHistory();
     history.unshift(session);
     const del = this.getDeletedHistoryIds().filter(d => d !== session.id);
@@ -410,6 +455,7 @@ const Store = {
 
   // --- ACTIVE WORKOUT IN CORSO ---
   getActiveWorkout() {
+    if (IS_DEMO_MODE && this._demoState) return this._demoState.activeWorkout;
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_WORKOUT);
       return data ? JSON.parse(data) : null;
@@ -419,6 +465,10 @@ const Store = {
   },
 
   saveActiveWorkout(workout) {
+    if (IS_DEMO_MODE && this._demoState) {
+      this._demoState.activeWorkout = workout || null;
+      return;
+    }
     if (!workout) {
       localStorage.removeItem(STORAGE_KEYS.ACTIVE_WORKOUT);
     } else {
@@ -427,11 +477,16 @@ const Store = {
   },
 
   clearActiveWorkout() {
+    if (IS_DEMO_MODE && this._demoState) {
+      this._demoState.activeWorkout = null;
+      return;
+    }
     localStorage.removeItem(STORAGE_KEYS.ACTIVE_WORKOUT);
   },
 
   // --- IMPOSTAZIONI ---
   getSettings() {
+    if (IS_DEMO_MODE && this._demoState) return this._demoState.settings;
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
       return data ? JSON.parse(data) : { soundEnabled: true, vibrationEnabled: true, defaultTimerIncrement: 15 };
@@ -441,6 +496,10 @@ const Store = {
   },
 
   setSettings(settings) {
+    if (IS_DEMO_MODE && this._demoState) {
+      this._demoState.settings = settings;
+      return;
+    }
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
   },
 
@@ -459,6 +518,7 @@ const Store = {
   },
 
   importBackup(jsonString) {
+    if (IS_DEMO_MODE) return { success: false, error: "Modalità Demo in sola lettura." };
     try {
       const data = JSON.parse(jsonString);
       if (!data || !Array.isArray(data.routines) || !Array.isArray(data.history)) {
@@ -477,6 +537,7 @@ const Store = {
   },
 
   resetToDefaults() {
+    if (IS_DEMO_MODE) return;
     this.setDeletedRoutineIds([]);
     this.setDeletedHistoryIds([]);
     this.setRoutines(DEFAULT_ROUTINES);

@@ -39,6 +39,12 @@ const CloudSync = {
   },
 
   init() {
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      this.initialized = false;
+      this.updateStatusUI("demo");
+      return;
+    }
+
     this.deviceId = this.getOrCreateDeviceId();
     this.updateStatusUI("connecting");
 
@@ -298,6 +304,14 @@ const CloudSync = {
   },
 
   async syncNow(showUserToast = true) {
+    if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+      if (showUserToast && typeof App !== "undefined") {
+        App.showToast("👀 Modalità Demo (sola lettura): esplora liberamente, nessuna modifica viene salvata.");
+      }
+      this.updateStatusUI("demo");
+      return false;
+    }
+
     if (!this.db) {
       if (showUserToast && typeof App !== "undefined") {
         App.showToast("Modalità offline: i dati sono salvati sul dispositivo.");
@@ -361,7 +375,8 @@ const CloudSync = {
       syncing: { text: "Sync...", cls: "syncing", desc: "Sincronizzazione in corso..." },
       synced: { text: "Cloud Live", cls: "synced", desc: "Connesso in tempo reale" },
       offline: { text: "Offline", cls: "offline", desc: "Offline (salvato in locale, sincronizza al ritorno della rete)" },
-      error: { text: "Sync err", cls: "error", desc: "Errore temporaneo di rete" }
+      error: { text: "Sync err", cls: "error", desc: "Errore temporaneo di rete" },
+      demo: { text: "Modalità Demo", cls: "demo", desc: "Modalità Demo (Sola Lettura) — Esplora tutte le funzioni, nessuna modifica verrà salvata" }
     };
 
     const info = map[state] || map.connecting;
