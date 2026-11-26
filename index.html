@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <!-- Stili CSS -->
-  <link rel="stylesheet" href="css/style.css?v=14">
+  <link rel="stylesheet" href="css/style.css?v=15">
 </head>
 <body>
   <div id="app">
@@ -97,16 +97,44 @@
           </div>
         </div>
 
-        <!-- Scheda Esecuzione Allenamento Attivo -->
+        <!-- Scheda Esecuzione Allenamento Attivo (usata anche per Modifica Sessione) -->
         <div id="active-workout-container" style="display: none;">
-          <!-- Barra Superiore Sticky Allenamento -->
+          <!-- Barra Superiore Allenamento -->
           <div class="active-workout-header">
+            <div id="active-edit-mode-bar" class="active-edit-mode-bar" style="display: none;">
+              <div class="edit-mode-badge">✏️ MODIFICA SESSIONE SALVATA</div>
+              <div class="edit-mode-slot-row">
+                <select id="active-edit-week" class="form-select edit-slot-select" onchange="App.updateActiveEditMeta('week', this.value)">
+                  <option value="">Libera</option>
+                  <option value="1">Sett 1</option>
+                  <option value="2">Sett 2</option>
+                  <option value="3">Sett 3</option>
+                  <option value="4">Sett 4</option>
+                  <option value="5">Sett 5</option>
+                  <option value="6">Sett 6</option>
+                  <option value="7">Sett 7</option>
+                  <option value="8">Sett 8</option>
+                  <option value="9">Sett 9</option>
+                  <option value="10">Sett 10</option>
+                  <option value="11">Sett 11</option>
+                  <option value="12">Sett 12</option>
+                </select>
+                <select id="active-edit-day" class="form-select edit-slot-select" onchange="App.updateActiveEditMeta('dayNumber', this.value)">
+                  <option value="">Nessun giorno</option>
+                  <option value="1">Giorno 1</option>
+                  <option value="2">Giorno 2</option>
+                  <option value="3">Giorno 3</option>
+                  <option value="4">Giorno 4</option>
+                </select>
+              </div>
+            </div>
+
             <div class="workout-live-bar">
               <div style="min-width: 0; flex: 1; padding-right: 8px;">
                 <h2 id="active-routine-name" style="font-size: 1.05rem; font-weight: 800; line-height: 1.25;">Scheda</h2>
                 <span class="workout-stats-pill" id="active-summary-stats">0 serie • 0 kg</span>
               </div>
-              <div class="workout-timer-box">
+              <div class="workout-timer-box" id="active-timer-box">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 <span id="active-elapsed-time">00:00</span>
               </div>
@@ -115,7 +143,7 @@
             <div class="workout-header-btns">
               <button id="btn-finish-workout" class="btn btn-success">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                Termina e Salva
+                <span id="btn-finish-workout-label">Termina e Salva</span>
               </button>
               <button id="btn-cancel-workout" class="btn btn-danger btn-sm">
                 Annulla
@@ -614,14 +642,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
   <!-- Moduli Applicazione -->
-  <script src="js/data.js?v=14"></script>
-  <script src="js/anatomy.js?v=14"></script>
-  <script src="js/store.js?v=14"></script>
-  <script src="js/cloud.js?v=14"></script>
-  <script src="js/timer.js?v=14"></script>
-  <script src="js/charts.js?v=14"></script>
-  <script src="js/report.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="js/data.js?v=15"></script>
+  <script src="js/anatomy.js?v=15"></script>
+  <script src="js/store.js?v=15"></script>
+  <script src="js/cloud.js?v=15"></script>
+  <script src="js/timer.js?v=15"></script>
+  <script src="js/charts.js?v=15"></script>
+  <script src="js/report.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 
   <!-- Registrazione Service Worker PWA con aggiornamento automatico -->
   <script>
@@ -635,9 +663,9 @@
 
         let refreshing = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v14")) {
+          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v15")) {
             refreshing = true;
-            sessionStorage.setItem("sw_reloaded_v14", "1");
+            sessionStorage.setItem("sw_reloaded_v15", "1");
             window.location.reload();
           }
         });
