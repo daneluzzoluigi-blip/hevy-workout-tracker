@@ -1877,3 +1877,35 @@ body.demo-mode #btn-finish-workout {
   font-size: 0.86rem;
   font-weight: 700;
 }
+
+
+/* ==========================================================================
+   MODALITÀ MODIFICA SESSIONE DENTRO SCHERMATA ALLENAMENTO
+   ========================================================================== */
+.active-edit-mode-bar {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.edit-mode-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #93c5fd;
+  margin-bottom: 6px;
+}
+
+.edit-mode-slot-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.edit-slot-select {
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
