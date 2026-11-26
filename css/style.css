@@ -1604,3 +1604,194 @@ input, textarea {
 .toast-msg {
   z-index: 200;
 }
+
+
+/* ==========================================================================
+   CALCOLATORE BACK-OFF & TAG RAPIDI DOLORE / STANCHEZZA
+   ========================================================================== */
+.backoff-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(59, 130, 246, 0.14);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.backoff-toggle-pill.active {
+  background: var(--accent-blue);
+  color: #ffffff;
+  border-color: #60a5fa;
+}
+
+.backoff-calc-panel {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.backoff-calc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  color: #bfdbfe;
+  margin-bottom: 8px;
+}
+
+.backoff-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.backoff-btns-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.backoff-action-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 7px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-family: inherit;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.backoff-action-btn:active {
+  transform: scale(0.97);
+  border-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.18);
+}
+
+.backoff-action-btn strong {
+  font-size: 0.78rem;
+  color: #60a5fa;
+}
+
+.backoff-action-btn span {
+  font-size: 0.69rem;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.plates-preview-box {
+  background: rgba(9, 9, 11, 0.55);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.plates-preview-box span {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.quick-tags-scroll {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0 8px 0;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.quick-tags-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  padding: 4px 9px;
+  font-family: inherit;
+  font-size: 0.71rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-tag-chip:active {
+  transform: scale(0.95);
+}
+
+.quick-tag-chip.tag-fatigue.active {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: #f59e0b;
+  color: #fde68a;
+}
+
+.quick-tag-chip.tag-pain.active {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: #ef4444;
+  color: #fecaca;
+}
+
+.quick-tag-chip.tag-info.active {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: #3b82f6;
+  color: #bfdbfe;
+}
+
+.history-qtags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.history-qtag {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+}
+
+.history-qtag.tag-fatigue {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.history-qtag.tag-pain {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.history-qtag.tag-info {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
