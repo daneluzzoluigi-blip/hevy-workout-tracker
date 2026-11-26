@@ -722,7 +722,9 @@ const App = {
   },
 
   resumeActiveWorkout() {
-    this.startWorkoutTimer();
+    if (!this.activeWorkout || !this.activeWorkout.isEditingHistory) {
+      this.startWorkoutTimer();
+    }
     this.updateActiveNavBadge();
     if (this.currentView === "view-active") {
       this.renderActiveWorkout();
@@ -797,6 +799,19 @@ const App = {
 
     if (emptyState) emptyState.style.display = "none";
     if (container) container.style.display = "block";
+
+    const isEditing = !!this.activeWorkout.isEditingHistory;
+    const editBar = document.getElementById("active-edit-mode-bar");
+    const timerBox = document.getElementById("active-timer-box");
+    const finishLbl = document.getElementById("btn-finish-workout-label");
+    const editWeekEl = document.getElementById("active-edit-week");
+    const editDayEl = document.getElementById("active-edit-day");
+
+    if (editBar) editBar.style.display = isEditing ? "block" : "none";
+    if (timerBox) timerBox.style.display = isEditing ? "none" : "flex";
+    if (finishLbl) finishLbl.textContent = isEditing ? "Salva Modifiche" : "Termina e Salva";
+    if (isEditing && editWeekEl) editWeekEl.value = this.activeWorkout.week ? String(this.activeWorkout.week) : "";
+    if (isEditing && editDayEl) editDayEl.value = this.activeWorkout.dayNumber ? String(this.activeWorkout.dayNumber) : "";
 
     if (nameEl) nameEl.textContent = this.activeWorkout.routineName || "Allenamento";
 
@@ -1169,7 +1184,7 @@ const App = {
 
     if ("vibrate" in navigator) navigator.vibrate(20);
 
-    if (set.completed) {
+    if (set.completed && !this.activeWorkout.isEditingHistory) {
       const restSec = ex.restSeconds || 90;
       RestTimer.start(restSec, ex.name);
       this.showToast(`Serie completata! Recupero: ${restSec}s`);
@@ -1246,15 +1261,37 @@ const App = {
 
   cancelActiveWorkout() {
     if (!this.activeWorkout) return;
-    if (confirm("Sei sicuro di voler annullare e cancellare questo allenamento in corso?")) {
+    const isEditing = !!this.activeWorkout.isEditingHistory;
+    const msg = isEditing
+      ? "Annullare le modifiche non salvate a questa sessione?"
+      : "Sei sicuro di voler annullare e cancellare questo allenamento in corso?";
+    if (confirm(msg)) {
       if (this.workoutTimerInterval) clearInterval(this.workoutTimerInterval);
       RestTimer.stop();
       Store.clearActiveWorkout();
       this.activeWorkout = null;
+      this.expandedBackoffIdx.clear();
       this.updateActiveNavBadge();
       this.renderActiveWorkout();
-      this.showToast("Allenamento annullato.");
+      if (isEditing) {
+        this.switchView("view-routines");
+        this.showToast("Modifiche annullate.");
+      } else {
+        this.showToast("Allenamento annullato.");
+      }
     }
+  },
+
+  updateActiveEditMeta(field, val) {
+    if (!this.activeWorkout || !this.activeWorkout.isEditingHistory) return;
+    this.activeWorkout[field] = val ? parseInt(val, 10) : null;
+    if (this.activeWorkout.week && this.activeWorkout.dayNumber) {
+      const matched = Store.getRoutines().find(r =>
+        Number(r.week) === this.activeWorkout.week && Number(r.dayNumber) === this.activeWorkout.dayNumber
+      );
+      if (matched) this.activeWorkout.routineId = matched.id;
+    }
+    Store.saveActiveWorkout(this.activeWorkout);
   },
 
   finishActiveWorkout() {
@@ -1262,6 +1299,65 @@ const App = {
 
     if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
       this.showToast("🔒 Modalità Demo: nessun dato salvato. Nella versione completa si sincronizza live su Cloud e PDF!");
+      return;
+    }
+
+    // Se stiamo modificando una sessione già salvata nello storico, aggiorna direttamente senza creare doppioni
+    if (this.activeWorkout.isEditingHistory && this.activeWorkout.editingSessionId) {
+      let totalVolume = 0;
+      const exercisesData = [];
+
+      (this.activeWorkout.exercises || []).forEach(ex => {
+        const sets = (ex.sets || []).map((s, idx) => ({
+          setNumber: idx + 1,
+          weight: Number(s.weight) || 0,
+          reps: Number(s.reps) || 0,
+          tag: s.tag || "",
+          completed: !!s.completed
+        }));
+        const completedSets = sets.filter(s => s.completed);
+        const qTags = Array.isArray(ex.quickTags) ? [...ex.quickTags] : [];
+        const hasContent = completedSets.length > 0 || qTags.length > 0 || (ex.wasInOriginalSession && (ex.notes || "").trim().length > 0);
+
+        if (hasContent) {
+          completedSets.forEach(s => {
+            totalVolume += (Number(s.weight) || 0) * (Number(s.reps) || 0);
+          });
+          exercisesData.push({
+            name: ex.name,
+            notes: ex.notes || "",
+            quickTags: qTags,
+            sets
+          });
+        }
+      });
+
+      const updatedSession = {
+        id: this.activeWorkout.editingSessionId,
+        routineId: this.activeWorkout.routineId || null,
+        routineName: this.activeWorkout.routineName || "Allenamento",
+        week: this.activeWorkout.week || null,
+        dayNumber: this.activeWorkout.dayNumber || null,
+        date: this.activeWorkout.originalDate || new Date().toISOString(),
+        durationMinutes: this.activeWorkout.originalDuration || 60,
+        totalVolumeKg: Math.round(totalVolume * 10) / 10,
+        exercises: exercisesData
+      };
+
+      Store.updateHistorySession(updatedSession);
+      if (this.workoutTimerInterval) clearInterval(this.workoutTimerInterval);
+      RestTimer.stop();
+      Store.clearActiveWorkout();
+      this.activeWorkout = null;
+      this.expandedBackoffIdx.clear();
+      this.updateActiveNavBadge();
+
+      this.renderRoutines();
+      this.renderHistoryList();
+      ChartsManager.populateSelectors();
+      ChartsManager.renderCurrentCharts();
+      this.switchView("view-stats");
+      this.showToast("✓ Modifiche salvate e sincronizzate sul cloud!");
       return;
     }
 
@@ -1676,34 +1772,138 @@ const App = {
     }
   },
 
-  // --- EDITOR SESSIONI GIÀ SALVATE (STORICO) ---
+  // --- MODIFICA SESSIONE SALVATA NELLA STESSA INTERFACCIA DI ALLENAMENTO ---
   openHistoryEditor(sessionId) {
     if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
       this.showToast("🔒 Modalità Demo (sola lettura): modifica storico disabilitata.");
       return;
     }
+
     const history = Store.getHistory();
     const session = history.find(h => h.id === sessionId);
     if (!session) return;
 
-    this.currentHistoryEditorSession = JSON.parse(JSON.stringify(session));
+    if (this.activeWorkout && (!this.activeWorkout.isEditingHistory || this.activeWorkout.editingSessionId !== sessionId)) {
+      if (!confirm("C'è già un allenamento aperto. Vuoi chiuderlo per modificare questa sessione salvata?")) {
+        this.switchView("view-active");
+        return;
+      }
+    }
+
     const slot = ChartsManager.extractTrainingSlot(session);
+    const week = slot.week > 0 ? slot.week : null;
+    const dayNumber = slot.day > 0 ? slot.day : null;
 
-    const idEl = document.getElementById("edit-hist-id");
-    const nameEl = document.getElementById("edit-hist-name");
-    const weekEl = document.getElementById("edit-hist-week");
-    const dayEl = document.getElementById("edit-hist-day");
-    const durEl = document.getElementById("edit-hist-duration");
+    // Cerca la scheda originale del programma per mostrare anche gli eventuali esercizi non ancora spuntati
+    let matchedRoutine = session.routineId ? Store.getRoutineById(session.routineId) : null;
+    if (!matchedRoutine && week && dayNumber) {
+      matchedRoutine = Store.getRoutines().find(r => Number(r.week) === week && Number(r.dayNumber) === dayNumber) || null;
+    }
 
-    if (idEl) idEl.value = session.id;
-    if (nameEl) nameEl.value = session.routineName || "";
-    if (weekEl) weekEl.value = slot.week > 0 ? String(slot.week) : "";
-    if (dayEl) dayEl.value = slot.day > 0 ? String(slot.day) : "";
-    if (durEl) durEl.value = session.durationMinutes || 60;
+    const sessionExercises = JSON.parse(JSON.stringify(session.exercises || []));
+    const usedIndices = new Set();
+    const mergedExercises = [];
 
-    this.renderHistoryEditorExercises();
-    const modal = document.getElementById("modal-history-editor");
-    if (modal) modal.classList.add("open");
+    if (matchedRoutine && Array.isArray(matchedRoutine.exercises)) {
+      matchedRoutine.exercises.forEach(rEx => {
+        const matchIdx = sessionExercises.findIndex((sEx, i) =>
+          !usedIndices.has(i) && Store.isExerciseNameMatch(sEx.name, rEx.name)
+        );
+        if (matchIdx >= 0) {
+          usedIndices.add(matchIdx);
+          const sEx = sessionExercises[matchIdx];
+          const loggedSets = (sEx.sets || []).map((s, idx) => ({
+            setNumber: idx + 1,
+            weight: Number(s.weight) || 0,
+            reps: Number(s.reps) || 0,
+            tag: s.tag || (rEx.sets && rEx.sets[idx] && rEx.sets[idx].tag) || "",
+            completed: !!s.completed
+          }));
+          // Se l'esercizio era saltato (0 serie registrate), carica le serie della scheda non spuntate così si possono spuntare facilmente
+          const finalSets = loggedSets.length > 0
+            ? loggedSets
+            : (rEx.sets || []).map((s, idx) => ({
+                setNumber: idx + 1,
+                weight: Number(s.weight) || 0,
+                reps: Number(s.reps) || 0,
+                tag: s.tag || "",
+                completed: false
+              }));
+          mergedExercises.push({
+            name: sEx.name,
+            muscleGroup: rEx.muscleGroup || detectMuscleGroup(sEx.name),
+            superset: rEx.superset || "",
+            notes: sEx.notes || "",
+            quickTags: Array.isArray(sEx.quickTags) ? [...sEx.quickTags] : [],
+            restSeconds: rEx.restSeconds || 90,
+            wasInOriginalSession: true,
+            sets: finalSets
+          });
+        } else {
+          // Esercizio della scheda non ancora registrato in questa sessione (disponibile pronto sotto, non spuntato)
+          mergedExercises.push({
+            name: rEx.name,
+            muscleGroup: rEx.muscleGroup || detectMuscleGroup(rEx.name),
+            superset: rEx.superset || "",
+            notes: rEx.notes || "",
+            quickTags: [],
+            restSeconds: rEx.restSeconds || 90,
+            wasInOriginalSession: false,
+            sets: (rEx.sets || []).map((s, idx) => ({
+              setNumber: idx + 1,
+              weight: Number(s.weight) || 0,
+              reps: Number(s.reps) || 0,
+              tag: s.tag || "",
+              completed: false
+            }))
+          });
+        }
+      });
+    }
+
+    // Aggiungi eventuali esercizi extra / fuori programma salvati nella sessione
+    sessionExercises.forEach((sEx, i) => {
+      if (usedIndices.has(i)) return;
+      mergedExercises.push({
+        name: sEx.name,
+        muscleGroup: detectMuscleGroup(sEx.name),
+        superset: "",
+        notes: sEx.notes || "",
+        quickTags: Array.isArray(sEx.quickTags) ? [...sEx.quickTags] : [],
+        restSeconds: 90,
+        wasInOriginalSession: true,
+        sets: (sEx.sets || []).map((s, idx) => ({
+          setNumber: idx + 1,
+          weight: Number(s.weight) || 0,
+          reps: Number(s.reps) || 0,
+          tag: s.tag || "",
+          completed: !!s.completed
+        }))
+      });
+    });
+
+    if (this.workoutTimerInterval) clearInterval(this.workoutTimerInterval);
+    RestTimer.stop();
+    this.expandedBackoffIdx.clear();
+
+    this.activeWorkout = {
+      id: "edit_" + session.id,
+      isEditingHistory: true,
+      editingSessionId: session.id,
+      originalDate: session.date,
+      originalDuration: session.durationMinutes || 60,
+      routineId: session.routineId || (matchedRoutine ? matchedRoutine.id : null),
+      routineName: session.routineName || (matchedRoutine ? `Sett ${week} • ${matchedRoutine.name}` : "Allenamento"),
+      week,
+      dayNumber,
+      startTime: Date.now(),
+      exercises: mergedExercises
+    };
+
+    Store.saveActiveWorkout(this.activeWorkout);
+    this.updateActiveNavBadge();
+    this.switchView("view-active");
+    this.showToast("✏️ Modifica aperta nella schermata allenamento!");
   },
 
   renderHistoryEditorExercises() {
