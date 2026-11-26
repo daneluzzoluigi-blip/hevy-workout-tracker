@@ -1,18 +1,89 @@
 /**
- * Charts - Grafici interattivi con Chart.js per Carico Massimo, 1RM Epley e Volume Routine
+ * Charts - Grafici interattivi con Chart.js ordinati per Calendario di Allenamento
+ * (Settimana → Giorno, es. S1 · G1 → S8 · G4) invece che per data solare.
  */
 
 const ChartsManager = {
   exerciseChartInstance: null,
   routineChartInstance: null,
 
-  formatShortDate(isoString) {
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
-    } catch (e) {
-      return isoString;
+  /**
+   * Estrae { week, day } da una sessione (da campi espliciti o dal nome routine)
+   */
+  extractTrainingSlot(session) {
+    let week = Number(session.week) || 0;
+    let day = Number(session.dayNumber) || 0;
+
+    const name = session.routineName || "";
+    if (!week) {
+      const mW = name.match(/sett(?:imana)?\.?\s*(\d+)/i);
+      if (mW) week = parseInt(mW[1], 10);
     }
+    if (!day) {
+      const mD = name.match(/giorno\s*(\d+)/i);
+      if (mD) day = parseInt(mD[1], 10);
+    }
+
+    return { week, day };
+  },
+
+  /**
+   * Ordina le sessioni secondo il calendario di allenamento:
+   * Settimana crescente → Giorno crescente (sessioni libere senza settimana alla fine)
+   */
+  sortByTrainingCalendar(sessions) {
+    return [...sessions].sort((a, b) => {
+      const slotA = this.extractTrainingSlot(a);
+      const slotB = this.extractTrainingSlot(b);
+
+      const hasA = slotA.week > 0;
+      const hasB = slotB.week > 0;
+      if (hasA && !hasB) return -1;
+      if (!hasA && hasB) return 1;
+
+      if (slotA.week !== slotB.week) return slotA.week - slotB.week;
+      if (slotA.day !== slotB.day) return slotA.day - slotB.day;
+
+      return new Date(a.date || 0) - new Date(b.date || 0);
+    });
+  },
+
+  /**
+   * Formatta etichetta compatta per asse X e titolo esteso per tooltip
+   */
+  buildTrainingLabels(entries) {
+    const slotCounts = new Map();
+    entries.forEach(e => {
+      const key = e.week > 0 ? `S${e.week}_G${e.day}` : "FREE";
+      slotCounts.set(key, (slotCounts.get(key) || 0) + 1);
+    });
+
+    const seenCounts = new Map();
+    let freeIndex = 0;
+
+    return entries.map(e => {
+      if (e.week > 0) {
+        const key = `S${e.week}_G${e.day}`;
+        const occ = (seenCounts.get(key) || 0) + 1;
+        seenCounts.set(key, occ);
+        const totalForSlot = slotCounts.get(key) || 1;
+        const suffix = totalForSlot > 1 ? ` (#${occ})` : "";
+
+        const shortLabel = e.day > 0
+          ? `S${e.week} · G${e.day}${suffix}`
+          : `Sett ${e.week}${suffix}`;
+        const fullLabel = e.day > 0
+          ? `Settimana ${e.week} • Giorno ${e.day}${suffix}`
+          : `Settimana ${e.week}${suffix}`;
+        return { shortLabel, fullLabel };
+      } else {
+        freeIndex++;
+        return {
+          shortLabel: `Libera #${freeIndex}`,
+          fullLabel: e.routineName || `Sessione Libera #${freeIndex}`
+        };
+      }
+    });
   },
 
   init() {
@@ -24,7 +95,6 @@ const ChartsManager = {
     const history = Store.getHistory();
     const routines = Store.getRoutines();
 
-    // 1. Elenco esercizi unici (prima quelli presenti nello storico con dati reali)
     const exerciseSelect = document.getElementById("chart-exercise-select");
     if (exerciseSelect) {
       const historyExSet = new Set();
@@ -93,12 +163,11 @@ const ChartsManager = {
       }
     }
 
-    // 2. Elenco filtri per grafico volume (Tutte + per Giorno 1–4 + eventuali schede personalizzate)
     const routineSelect = document.getElementById("chart-routine-select");
     if (routineSelect) {
       const currentRoutine = routineSelect.value;
       routineSelect.innerHTML = `
-        <option value="all">Tutte le Sessioni</option>
+        <option value="all">Tutte le Sessioni (Sett → Giorno)</option>
         <option value="day:1">Giorno 1 – Pull / Stacco</option>
         <option value="day:2">Giorno 2 – Push</option>
         <option value="day:3">Giorno 3 – Lower</option>
@@ -145,20 +214,17 @@ const ChartsManager = {
   },
 
   /**
-   * Grafico Esercizio: Carico Massimo (kg) e 1RM stimato (Epley) nel tempo
+   * Grafico Esercizio: Carico Massimo (kg) e 1RM stimato (Epley) per Settimana & Giorno
    */
   renderExerciseChart(exerciseName, metric = "both") {
     const history = Store.getHistory();
-    const chronological = [...history].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const ordered = this.sortByTrainingCalendar(history);
 
-    const labels = [];
-    const maxWeights = [];
-    const oneRMs = [];
-
+    const entries = [];
     let allTimeMaxWeight = 0;
     let allTimeMax1RM = 0;
 
-    chronological.forEach(session => {
+    ordered.forEach(session => {
       if (!session.exercises) return;
       const ex = session.exercises.find(e => Store.isExerciseNameMatch(e.name, exerciseName));
       if (ex && ex.sets) {
@@ -174,13 +240,24 @@ const ChartsManager = {
           if (maxW > allTimeMaxWeight) allTimeMaxWeight = maxW;
           if (sessionMax1RM > allTimeMax1RM) allTimeMax1RM = sessionMax1RM;
 
-          const wkTag = session.week ? `S${session.week} · ` : "";
-          labels.push(`${wkTag}${this.formatShortDate(session.date)}`);
-          maxWeights.push(maxW);
-          oneRMs.push(sessionMax1RM);
+          const slot = this.extractTrainingSlot(session);
+          entries.push({
+            week: slot.week,
+            day: slot.day,
+            routineName: session.routineName || "",
+            maxWeight: maxW,
+            oneRM: sessionMax1RM,
+            setsSummary: validSets.map(s => `${s.weight}×${s.reps}`).join(", ")
+          });
         }
       }
     });
+
+    const builtLabels = this.buildTrainingLabels(entries);
+    const labels = builtLabels.map(l => l.shortLabel);
+    const fullTitles = builtLabels.map(l => l.fullLabel);
+    const maxWeights = entries.map(e => e.maxWeight);
+    const oneRMs = entries.map(e => e.oneRM);
 
     const prEl = document.getElementById("ex-stat-pr");
     const rmEl = document.getElementById("ex-stat-1rm");
@@ -274,7 +351,16 @@ const ChartsManager = {
               borderWidth: 1,
               padding: 12,
               callbacks: {
-                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} kg`
+                title: items => {
+                  const idx = items && items[0] ? items[0].dataIndex : 0;
+                  return fullTitles[idx] || "";
+                },
+                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} kg`,
+                afterBody: items => {
+                  const idx = items && items[0] ? items[0].dataIndex : 0;
+                  const summary = entries[idx] && entries[idx].setsSummary;
+                  return summary ? `\nSerie: ${summary}` : "";
+                }
               }
             }
           },
@@ -300,26 +386,23 @@ const ChartsManager = {
   },
 
   /**
-   * Grafico Routine: Volume totale sollevato per sessione
+   * Grafico Routine: Volume totale sollevato per Settimana & Giorno
    */
   renderRoutineChart(routineFilter = "all") {
     const history = Store.getHistory();
-    const chronological = [...history].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const ordered = this.sortByTrainingCalendar(history);
 
-    const labels = [];
-    const volumes = [];
+    const entries = [];
     let totalVolumeSum = 0;
     let maxVolume = 0;
 
-    chronological.forEach(session => {
+    ordered.forEach(session => {
+      const slot = this.extractTrainingSlot(session);
+
       if (routineFilter !== "all") {
         if (routineFilter.startsWith("day:")) {
           const targetDay = parseInt(routineFilter.split(":")[1], 10);
-          const sessionDay = session.dayNumber || (() => {
-            const m = (session.routineName || "").match(/giorno\s*(\d)/i);
-            return m ? parseInt(m[1], 10) : null;
-          })();
-          if (sessionDay !== targetDay) return;
+          if (slot.day !== targetDay) return;
         } else if (session.routineId !== routineFilter) {
           return;
         }
@@ -330,19 +413,26 @@ const ChartsManager = {
       );
       if (vol <= 0) return;
 
-      const wkTag = session.week ? `S${session.week} ` : "";
-      const dayTag = session.dayNumber ? `G${session.dayNumber} · ` : "";
-      labels.push(`${wkTag}${dayTag}${this.formatShortDate(session.date)}`);
-      volumes.push(vol);
+      entries.push({
+        week: slot.week,
+        day: slot.day,
+        routineName: session.routineName || "",
+        volume: vol
+      });
       totalVolumeSum += vol;
       if (vol > maxVolume) maxVolume = vol;
     });
+
+    const builtLabels = this.buildTrainingLabels(entries);
+    const labels = builtLabels.map(l => l.shortLabel);
+    const fullTitles = builtLabels.map(l => l.fullLabel);
+    const volumes = entries.map(e => e.volume);
 
     const volMaxEl = document.getElementById("routine-stat-maxvol");
     const volAvgEl = document.getElementById("routine-stat-avgvol");
     const volCountEl = document.getElementById("routine-stat-count");
 
-    if (volMaxEl) volMaxEl.textContent = maxVolume > 0 ? `${maxVolume.toLocaleString("it-IT")} kg` : "-";
+    if (volMaxEl) volMaxEl.textContent = maxVolume > 0 ? `${Math.round(maxVolume).toLocaleString("it-IT")} kg` : "-";
     if (volAvgEl) {
       const avg = volumes.length > 0 ? Math.round(totalVolumeSum / volumes.length) : 0;
       volAvgEl.textContent = avg > 0 ? `${avg.toLocaleString("it-IT")} kg` : "-";
@@ -396,7 +486,11 @@ const ChartsManager = {
               borderWidth: 1,
               padding: 12,
               callbacks: {
-                label: ctx => ` Volume: ${ctx.parsed.y.toLocaleString("it-IT")} kg`
+                title: items => {
+                  const idx = items && items[0] ? items[0].dataIndex : 0;
+                  return fullTitles[idx] || "";
+                },
+                label: ctx => ` Volume: ${Math.round(ctx.parsed.y).toLocaleString("it-IT")} kg`
               }
             }
           },
