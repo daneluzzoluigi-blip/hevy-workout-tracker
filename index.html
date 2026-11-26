@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <!-- Stili CSS -->
-  <link rel="stylesheet" href="css/style.css?v=5">
+  <link rel="stylesheet" href="css/style.css?v=6">
 </head>
 <body>
   <div id="app">
@@ -136,8 +136,12 @@
         <div class="section-title-wrap">
           <div>
             <h1 class="section-title">Progressi & Analisi</h1>
-            <p class="section-subtitle">Carichi massimi, 1RM stimato e storico settimane</p>
+            <p class="section-subtitle">Calendario settimane, 1RM e report PDF</p>
           </div>
+          <button id="btn-open-results-report" class="btn btn-primary btn-sm" style="white-space: nowrap;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+            Scarica Risultati
+          </button>
         </div>
 
         <!-- Selettore Tab Statistiche: Grafici vs Storico -->
@@ -490,24 +494,58 @@
     </div>
   </div>
 
+  <!-- 5. Modal Foglio Risultati & Esportazione PDF -->
+  <div class="modal-overlay" id="modal-results-report">
+    <div class="modal-content" style="max-height: 92vh;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">📄 Foglio Risultati</h3>
+          <div style="font-size: 0.74rem; color: var(--text-muted);">Chiusi, non chiusi, serie e note — pronto in PDF</div>
+        </div>
+        <button type="button" class="icon-btn close-modal-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding-top: 10px;">
+        <div id="report-filter-chips" class="filter-chips-scroll" style="margin-bottom: 10px;">
+          <!-- Popolato dinamicamente da report.js -->
+        </div>
+        <div id="report-preview-content">
+          <!-- Anteprima pulita generata da report.js -->
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <button type="button" id="btn-share-pdf" class="btn btn-secondary btn-sm" style="flex: 1;">
+          📤 Condividi PDF
+        </button>
+        <button type="button" id="btn-download-pdf" class="btn btn-primary btn-sm" style="flex: 1.4;">
+          ⬇️ Scarica PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notifica Rapida -->
   <div id="app-toast" class="toast-msg"></div>
 
   <!-- Libreria Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+  <!-- Librerie jsPDF + AutoTable CDN per generazione PDF vettoriale -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+
   <!-- Firebase SDK (Cloud Firestore Sync in tempo reale) -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
   <!-- Moduli Applicazione -->
-  <script src="js/data.js?v=5"></script>
-  <script src="js/anatomy.js?v=5"></script>
-  <script src="js/store.js?v=5"></script>
-  <script src="js/cloud.js?v=5"></script>
-  <script src="js/timer.js?v=5"></script>
-  <script src="js/charts.js?v=5"></script>
-  <script src="js/app.js?v=5"></script>
+  <script src="js/data.js?v=6"></script>
+  <script src="js/anatomy.js?v=6"></script>
+  <script src="js/store.js?v=6"></script>
+  <script src="js/cloud.js?v=6"></script>
+  <script src="js/timer.js?v=6"></script>
+  <script src="js/charts.js?v=6"></script>
+  <script src="js/report.js?v=6"></script>
+  <script src="js/app.js?v=6"></script>
 
   <!-- Registrazione Service Worker PWA con aggiornamento automatico -->
   <script>
@@ -521,9 +559,9 @@
 
         let refreshing = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v5")) {
+          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v6")) {
             refreshing = true;
-            sessionStorage.setItem("sw_reloaded_v5", "1");
+            sessionStorage.setItem("sw_reloaded_v6", "1");
             window.location.reload();
           }
         });
