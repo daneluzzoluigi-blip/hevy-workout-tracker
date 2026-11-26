@@ -15,7 +15,18 @@ const App = {
   selectedProgramId: "prog_pdf_s1_s4",
   selectedWeek: 1,
   expandedRoutineIds: new Set(),
+  expandedBackoffIdx: new Set(),
   historyWeekFilter: "all",
+
+  QUICK_TAGS: [
+    { label: "Stanchezza", short: "Stanchezza", emoji: "😴", type: "fatigue" },
+    { label: "Dolore gomiti", short: "Gomiti", emoji: "🤕", type: "pain" },
+    { label: "Mal di schiena", short: "Schiena", emoji: "🤕", type: "pain" },
+    { label: "Fastidio braccio", short: "Braccio", emoji: "🤕", type: "pain" },
+    { label: "Fastidio spalla", short: "Spalla", emoji: "🤕", type: "pain" },
+    { label: "Fastidio ginocchio", short: "Ginocchio", emoji: "🤕", type: "pain" },
+    { label: "Altra palestra", short: "Trasferta", emoji: "📍", type: "info" }
+  ],
 
   init() {
     Store.init();
@@ -626,6 +637,7 @@ const App = {
         muscleGroup: ex.muscleGroup || detectMuscleGroup(ex.name),
         superset: ex.superset || "",
         notes: ex.notes || "",
+        quickTags: [],
         restSeconds: ex.restSeconds || 90,
         sets: (ex.sets || []).map((s, idx) => ({
           setNumber: idx + 1,
@@ -820,6 +832,60 @@ const App = {
       }).join("");
 
       const noteRows = Math.min(6, Math.max(2, (ex.notes || "").split("\n").length));
+      const activeQuickTags = Array.isArray(ex.quickTags) ? ex.quickTags : [];
+      const topWeight = this.getExerciseTopWeight(ex);
+      const isBackoffOpen = this.expandedBackoffIdx.has(exIdx);
+      const quickTagsHtml = this.QUICK_TAGS.map(t => {
+        const isSelected = activeQuickTags.includes(t.label);
+        return `
+          <button type="button" class="quick-tag-chip tag-${t.type} ${isSelected ? 'active' : ''}"
+            onclick="App.toggleQuickTag(${exIdx}, '${t.label}')">
+            <span>${t.emoji}</span><span>${t.short}</span>
+          </button>
+        `;
+      }).join("");
+
+      const backoff10 = this.roundToPlate(topWeight * 0.9);
+      const backoff20kg = Math.max(0, Math.round((topWeight - 20) * 4) / 4);
+      const backoffPiram2 = this.roundToPlate(backoff10 * 0.9);
+      const backoffSst1 = this.roundToPlate(topWeight * 0.8);
+      const backoffSst2 = this.roundToPlate(backoffSst1 * 0.8);
+      const platesTop = this.formatPlatesPerSide(topWeight);
+      const platesBack10 = this.formatPlatesPerSide(backoff10);
+
+      const backoffPanelHtml = isBackoffOpen ? `
+        <div class="backoff-calc-panel">
+          <div class="backoff-calc-head">
+            <span>🧮 Calcolatore Back-off (Top Set: <strong>${topWeight} kg</strong>)</span>
+            <button type="button" class="backoff-close-btn" onclick="App.toggleBackoffCalc(${exIdx})">✕</button>
+          </div>
+          ${topWeight > 0 ? `
+            <div class="backoff-btns-grid">
+              <button type="button" class="backoff-action-btn" onclick="App.applyBackoff(${exIdx}, 'pct10')">
+                <strong>-10%</strong>
+                <span>${backoff10} kg (S2–S${(ex.sets || []).length})</span>
+              </button>
+              <button type="button" class="backoff-action-btn" onclick="App.applyBackoff(${exIdx}, 'piram10')">
+                <strong>-10% Piram.</strong>
+                <span>${backoff10} → ${backoffPiram2} kg</span>
+              </button>
+              <button type="button" class="backoff-action-btn" onclick="App.applyBackoff(${exIdx}, 'minus20')">
+                <strong>-20 kg</strong>
+                <span>${backoff20kg} kg (S2–S${(ex.sets || []).length})</span>
+              </button>
+              <button type="button" class="backoff-action-btn" onclick="App.applyBackoff(${exIdx}, 'sst20')">
+                <strong>-20% SST</strong>
+                <span>${backoffSst1} → ${backoffSst2} kg</span>
+              </button>
+            </div>
+            <div class="plates-preview-box">
+              <div><strong>Dischi/lato (bil. 20kg):</strong></div>
+              <div>Top ${topWeight}kg: <span>${platesTop}</span></div>
+              ${backoff10 > 0 ? `<div>Back-off -10% (${backoff10}kg): <span>${platesBack10}</span></div>` : ""}
+            </div>
+          ` : `<div style="font-size: 0.76rem; color: var(--text-muted);">Inserisci prima il peso nella Serie 1 (Top Set) per calcolare il back-off.</div>`}
+        </div>
+      ` : "";
 
       return `
         <div class="exercise-box ${isSuperset ? 'is-superset' : ''}" data-exercise-index="${exIdx}">
@@ -843,11 +909,21 @@ const App = {
                   <span style="font-size: 0.75rem; color: var(--text-muted);">
                     Rec: <strong style="color: var(--accent-blue); cursor: pointer;" onclick="App.editExerciseRest(${exIdx})">${ex.restSeconds || 90}s</strong>
                   </span>
+                  <button type="button" class="backoff-toggle-pill ${isBackoffOpen ? 'active' : ''}" onclick="App.toggleBackoffCalc(${exIdx})">
+                    🧮 Back-off
+                  </button>
                 </div>
 
                 <div id="pr-slot-${exIdx}">${prBadgesHtml}</div>
               </div>
             </div>
+          </div>
+
+          ${backoffPanelHtml}
+
+          <!-- Tag Rapidi Dolore & Stanchezza -->
+          <div class="quick-tags-scroll" aria-label="Tag rapidi dolore e stanchezza">
+            ${quickTagsHtml}
           </div>
 
           <textarea class="exercise-notes-textarea" rows="${noteRows}"
@@ -888,7 +964,115 @@ const App = {
       Store.saveActiveWorkout(this.activeWorkout);
       this.updateActiveHeaderStats();
       this.updateExercisePRsRealtime(exIdx);
+      if (field === "weight" && this.expandedBackoffIdx.has(exIdx)) {
+        this.renderActiveWorkout();
+      }
     }
+  },
+
+  // --- CALCOLATORE BACK-OFF & DISCHI BILANCIERE + TAG RAPIDI ---
+  getExerciseTopWeight(ex) {
+    if (!ex || !ex.sets || ex.sets.length === 0) return 0;
+    const s1 = Number(ex.sets[0].weight) || 0;
+    if (s1 > 0) return s1;
+    return Math.max(...ex.sets.map(s => Number(s.weight) || 0));
+  },
+
+  roundToPlate(kg, step = 2.5) {
+    if (!kg || kg <= 0) return 0;
+    return Math.max(0, Math.round(kg / step) * step);
+  },
+
+  formatPlatesPerSide(totalKg, barKg = 20) {
+    const w = Number(totalKg) || 0;
+    if (w <= barKg) return w > 0 ? `Solo bilanciere / manubri (${w} kg)` : "-";
+    let perSide = Math.round(((w - barKg) / 2) * 100) / 100;
+    const plates = [25, 20, 15, 10, 5, 2.5, 1.25];
+    const used = [];
+    for (const p of plates) {
+      while (perSide >= p - 0.001) {
+        used.push(p);
+        perSide = Math.round((perSide - p) * 100) / 100;
+      }
+    }
+    if (used.length === 0) return `${((w - barKg) / 2).toFixed(2)} kg/lato`;
+    const remStr = perSide > 0.01 ? ` (+${perSide}kg)` : "";
+    return `${used.join(" + ")} kg/lato${remStr}`;
+  },
+
+  toggleBackoffCalc(exIdx) {
+    if (this.expandedBackoffIdx.has(exIdx)) {
+      this.expandedBackoffIdx.delete(exIdx);
+    } else {
+      this.expandedBackoffIdx.add(exIdx);
+    }
+    this.renderActiveWorkout();
+  },
+
+  applyBackoff(exIdx, mode) {
+    if (!this.activeWorkout || !this.activeWorkout.exercises[exIdx]) return;
+    const ex = this.activeWorkout.exercises[exIdx];
+    const sets = ex.sets || [];
+    if (sets.length < 2) {
+      this.showToast("Aggiungi almeno 2 serie per applicare il back-off.");
+      return;
+    }
+
+    const topW = this.getExerciseTopWeight(ex);
+    if (topW <= 0) {
+      this.showToast("Inserisci prima il carico nella Serie 1 (Top Set).");
+      return;
+    }
+
+    let msg = "";
+    if (mode === "pct10") {
+      const target = this.roundToPlate(topW * 0.9);
+      for (let i = 1; i < sets.length; i++) {
+        if (!sets[i].completed) sets[i].weight = target;
+      }
+      msg = `⚡ Back-off -10% applicato: ${target} kg alle serie 2–${sets.length}`;
+    } else if (mode === "piram10") {
+      let cur = topW;
+      const applied = [];
+      for (let i = 1; i < sets.length; i++) {
+        cur = this.roundToPlate(cur * 0.9);
+        if (!sets[i].completed) sets[i].weight = cur;
+        applied.push(`${cur}kg`);
+      }
+      msg = `⚡ Piramidale -10% applicato: ${applied.join(" → ")}`;
+    } else if (mode === "minus20") {
+      const target = Math.max(0, Math.round((topW - 20) * 4) / 4);
+      for (let i = 1; i < sets.length; i++) {
+        if (!sets[i].completed) sets[i].weight = target;
+      }
+      msg = `⚡ Back-off -20 kg applicato: ${target} kg alle serie 2–${sets.length}`;
+    } else if (mode === "sst20") {
+      const drop1 = this.roundToPlate(topW * 0.8);
+      const drop2 = this.roundToPlate(drop1 * 0.8);
+      for (let i = 1; i < sets.length; i++) {
+        if (!sets[i].completed) sets[i].weight = i === 1 ? drop1 : drop2;
+      }
+      msg = `⚡ SST -20% applicato: S2 ${drop1} kg → S3+ ${drop2} kg`;
+    }
+
+    Store.saveActiveWorkout(this.activeWorkout);
+    this.renderActiveWorkout();
+    this.showToast(msg);
+  },
+
+  toggleQuickTag(exIdx, tagLabel) {
+    if (!this.activeWorkout || !this.activeWorkout.exercises[exIdx]) return;
+    const ex = this.activeWorkout.exercises[exIdx];
+    ex.quickTags = Array.isArray(ex.quickTags) ? ex.quickTags : [];
+    const idx = ex.quickTags.indexOf(tagLabel);
+    if (idx >= 0) {
+      ex.quickTags.splice(idx, 1);
+    } else {
+      ex.quickTags.push(tagLabel);
+      if ("vibrate" in navigator) navigator.vibrate(15);
+    }
+    Store.saveActiveWorkout(this.activeWorkout);
+    this.renderActiveWorkout();
   },
 
   updateExercisePRsRealtime(exIdx) {
@@ -1043,6 +1227,7 @@ const App = {
       exercisesData.push({
         name: ex.name,
         notes: ex.notes || "",
+        quickTags: Array.isArray(ex.quickTags) ? [...ex.quickTags] : [],
         sets: (ex.sets || []).map(s => ({
           setNumber: s.setNumber,
           weight: Number(s.weight) || 0,
@@ -1345,6 +1530,13 @@ const App = {
         const completedSets = (ex.sets || []).filter(s => s.completed);
         const setStrings = completedSets.map(s => `${s.weight}kg × ${s.reps}`).join(", ");
         const mGroup = detectMuscleGroup(ex.name);
+        const qTags = Array.isArray(ex.quickTags) ? ex.quickTags : [];
+        const qTagsHtml = qTags.length > 0
+          ? `<div class="history-qtags-row">${qTags.map(lbl => {
+              const meta = this.QUICK_TAGS.find(t => t.label === lbl) || { emoji: "🏷️", type: "info" };
+              return `<span class="history-qtag tag-${meta.type}">${meta.emoji} ${this.escapeHtml(lbl)}</span>`;
+            }).join("")}</div>`
+          : "";
 
         const prs = Store.checkExercisePRs(ex.name, ex.sets, item.id);
         const prBadges = [];
@@ -1360,6 +1552,7 @@ const App = {
               <div style="min-width: 0; flex: 1;">
                 <strong>${this.escapeHtml(ex.name)}</strong>
                 <div style="color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.75rem;">${setStrings || 'Nessuna serie eseguita'}</div>
+                ${qTagsHtml}
                 ${ex.notes ? `<div class="history-ex-note">${this.escapeHtml(ex.notes)}</div>` : ""}
               </div>
             </div>

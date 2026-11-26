@@ -274,7 +274,7 @@ const ReportManager = {
       }
     }
 
-    const hasPainWarning = /basta per|impossibile|mal di schiena|dolor|senza fermo/.test(lowerNote);
+    const hasPainWarning = /basta per|impossibile|mal di schiena|dolor|senza fermo|stanch|fastidio/.test(lowerNote);
     const hasOffProgramVariation = extraSetsCount > 0 || maxWeightOvershoot >= 5;
     let offProgramReason = "";
     if (extraSetsCount > 0 && maxWeightOvershoot >= 5) {
@@ -405,7 +405,10 @@ const ReportManager = {
         const target = isFreeSession
           ? null
           : this.getOriginalProgrammedExercise(slot.week, slot.day, ex.name, session.routineId);
-        const evaluation = this.evaluateExercise(target, ex.sets, ex.notes, isFreeSession);
+        const qTags = Array.isArray(ex.quickTags) ? ex.quickTags : [];
+        const tagsPrefix = qTags.length > 0 ? `[${qTags.join(", ")}]` : "";
+        const combinedNotes = [tagsPrefix, (ex.notes || "").trim()].filter(Boolean).join(" ");
+        const evaluation = this.evaluateExercise(target, ex.sets, combinedNotes, isFreeSession);
         const doneSets = (ex.sets || []).filter(s => s.completed);
 
         doneSets.forEach(s => {
@@ -432,13 +435,15 @@ const ReportManager = {
           diffText: evaluation.diffText,
           offProgram: evaluation.offProgram,
           offProgramReason: evaluation.offProgramReason,
-          notes: (ex.notes || "").trim()
+          quickTags: qTags,
+          notes: combinedNotes
         };
 
         rows.push(row);
 
-        const hasPainNote = /mal di schiena|gomiti|braccio|dolor|non lo farò|senza fermo/i.test(row.notes);
-        if (evaluation.status === "partial" || evaluation.status === "missed" || hasPainNote) {
+        const hasPainOrFatigue = qTags.some(t => /stanch|dolor|mal di|fastidio/i.test(t))
+          || /mal di schiena|gomiti|braccio|dolor|non lo farò|senza fermo|stanch|affatic/i.test(row.notes);
+        if (evaluation.status === "partial" || evaluation.status === "missed" || hasPainOrFatigue) {
           issuesSummary.push(row);
         }
 
