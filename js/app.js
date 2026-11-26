@@ -1443,6 +1443,27 @@ const App = {
 
     const btnConfirmSummary = document.getElementById("btn-confirm-save-summary");
     if (btnConfirmSummary) btnConfirmSummary.addEventListener("click", () => this.confirmSaveAndCloseSummary());
+
+    const btnOpenReport = document.getElementById("btn-open-results-report");
+    if (btnOpenReport) {
+      btnOpenReport.addEventListener("click", () => {
+        if (typeof ReportManager !== "undefined") ReportManager.openModal();
+      });
+    }
+
+    const btnDownloadPdf = document.getElementById("btn-download-pdf");
+    if (btnDownloadPdf) {
+      btnDownloadPdf.addEventListener("click", () => {
+        if (typeof ReportManager !== "undefined") ReportManager.downloadPdf(false);
+      });
+    }
+
+    const btnSharePdf = document.getElementById("btn-share-pdf");
+    if (btnSharePdf) {
+      btnSharePdf.addEventListener("click", () => {
+        if (typeof ReportManager !== "undefined") ReportManager.downloadPdf(true);
+      });
+    }
   },
 
   closeModal(modalId) {
