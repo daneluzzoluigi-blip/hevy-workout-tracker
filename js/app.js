@@ -314,7 +314,9 @@ const App = {
       const exercises = r.exercises || [];
       const exerciseCount = exercises.length;
       const isExpanded = this.expandedRoutineIds.has(r.id);
-      const isLogged = completedIds.has(r.id);
+      const completedSession = r.week ? Store.getCompletedSessionForRoutine(r) : null;
+      const isLogged = !!completedSession || completedIds.has(r.id);
+      const isWeeklyCompleted = !!(r.week && completedSession);
       const listToRender = isExpanded ? exercises : exercises.slice(0, 4);
 
       const previewExercises = listToRender.map(ex => {
@@ -364,10 +366,25 @@ const App = {
       const weekBadge = r.week
         ? `<span class="routine-week-badge">Sett ${r.week}${r.dayNumber ? ` • Giorno ${r.dayNumber}` : ""}</span>`
         : `<span class="routine-week-badge">Scheda Personale</span>`;
-      const doneBadge = isLogged ? `<span class="routine-done-badge">✓ Loggato</span>` : "";
+      const doneBadge = isWeeklyCompleted
+        ? `<span class="routine-done-badge">✓ Completato${completedSession.totalVolumeKg ? ` · ${Math.round(completedSession.totalVolumeKg).toLocaleString("it-IT")} kg` : ""}</span>`
+        : (isLogged ? `<span class="routine-done-badge">✓ Loggato</span>` : "");
+
+      const isDemo = typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE;
+      const actionsHtml = isWeeklyCompleted
+        ? (isDemo
+            ? `<div class="routine-completed-pill">✓ Allenamento già completato</div>`
+            : `<button class="btn btn-secondary btn-edit-completed" onclick="App.openHistoryEditor('${completedSession.id}')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Modifica Risultati Salvati
+              </button>`)
+        : `<button class="btn btn-primary" onclick="App.startWorkoutFromRoutine('${r.id}')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Avvia Allenamento
+          </button>`;
 
       return `
-        <div class="routine-card" data-id="${r.id}">
+        <div class="routine-card ${isWeeklyCompleted ? 'is-completed' : ''}" data-id="${r.id}">
           <div class="routine-header">
             <div style="min-width: 0; flex: 1;">
               <div class="routine-badges-row">${weekBadge}${doneBadge}</div>
@@ -394,10 +411,7 @@ const App = {
             </button>
           </div>
           <div class="routine-actions">
-            <button class="btn btn-primary" onclick="App.startWorkoutFromRoutine('${r.id}')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Avvia Allenamento
-            </button>
+            ${actionsHtml}
           </div>
         </div>
       `;
@@ -634,6 +648,20 @@ const App = {
   startWorkoutFromRoutine(routineId) {
     const routine = Store.getRoutineById(routineId);
     if (!routine) return;
+
+    // Gli allenamenti di una settimana specifica si fanno una volta sola: se già fatti, apri modifica risultati
+    if (routine.week) {
+      const existingSession = Store.getCompletedSessionForRoutine(routine);
+      if (existingSession) {
+        if (typeof IS_DEMO_MODE !== "undefined" && IS_DEMO_MODE) {
+          this.showToast("✓ Allenamento già completato (Modalità Demo in sola lettura).");
+          return;
+        }
+        this.openHistoryEditor(existingSession.id);
+        this.showToast("✓ Già completato! Puoi modificare qui carichi, rep o note.");
+        return;
+      }
+    }
 
     if (this.activeWorkout) {
       if (!confirm("C'è già un allenamento in corso. Vuoi abbandonarlo per avviare questo?")) {

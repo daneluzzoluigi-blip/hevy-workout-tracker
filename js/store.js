@@ -208,6 +208,24 @@ const Store = {
     return set;
   },
 
+  /**
+   * Restituisce la sessione già completata associata a una scheda settimanale
+   * (match per routineId oppure per coppia Settimana + Giorno).
+   */
+  getCompletedSessionForRoutine(routine) {
+    if (!routine) return null;
+    const history = this.getHistory();
+    const byId = history.find(h => h.routineId === routine.id);
+    if (byId) return byId;
+    if (routine.week && routine.dayNumber) {
+      return history.find(h =>
+        Number(h.week) === Number(routine.week) &&
+        Number(h.dayNumber) === Number(routine.dayNumber)
+      ) || null;
+    }
+    return null;
+  },
+
   // --- STORICO ALLENAMENTI ---
   getHistory() {
     if (IS_DEMO_MODE && this._demoState) {
@@ -256,7 +274,25 @@ const Store = {
   saveWorkoutSession(session, updateRoutineDefaults = true) {
     if (IS_DEMO_MODE) return;
     const history = this.getHistory();
-    history.unshift(session);
+    session.updatedAt = new Date().toISOString();
+
+    // Anti-duplicato per allenamenti settimanali: uno stesso (Settimana, Giorno) non si duplica mai
+    let replaced = false;
+    if (session.week && session.dayNumber) {
+      const existingIdx = history.findIndex(h =>
+        (session.routineId && h.routineId === session.routineId) ||
+        (Number(h.week) === Number(session.week) && Number(h.dayNumber) === Number(session.dayNumber))
+      );
+      if (existingIdx >= 0) {
+        session.id = history[existingIdx].id;
+        history[existingIdx] = session;
+        replaced = true;
+      }
+    }
+    if (!replaced) {
+      history.unshift(session);
+    }
+
     const del = this.getDeletedHistoryIds().filter(d => d !== session.id);
     this.setDeletedHistoryIds(del);
     this.setHistory(history);
