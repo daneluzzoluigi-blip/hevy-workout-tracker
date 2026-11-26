@@ -1,21 +1,71 @@
 /**
- * ReportManager - Motore di confronto Programmato vs Eseguito & Esportazione PDF pulita
- * Genera:
- *  1) Riepilogo KPI (Sessioni, Chiusi, Superati, Parziali, Saltati)
- *  2) Tabella evidenziata "Cosa NON ho chiuso / Parziali / Saltati"
- *  3) Dettaglio completo ordinato per Calendario di Allenamento (Settimana → Giorno)
- *  4) Esportazione PDF A4 vettoriale (jsPDF + AutoTable) + condivisione nativa iPhone
+ * ReportManager - Motore di confronto Programmato vs Eseguito & PDF divisi ogni 4 settimane
+ * Genera per ogni Mesociclo da 4 settimane (Sett 1–4, Sett 5–8, Sett 9–12...):
+ *  1) Riepilogo KPI (Sessioni, Chiusi, Non Chiusi, Fuori Programma, Volume)
+ *  2) Sezione 1: Punti di attenzione (Non chiusi / Parziali / Saltati / Note dolore)
+ *  3) Sezione 2: Attività Fuori Programma (Esercizi Extra, Sessioni Libere, Serie/Carichi fuori scheda)
+ *  4) Sezione 3: Dettaglio Completo per Settimana -> Giorno
+ *  5) Esportazione PDF A4 vettoriale per blocco da 4 settimane (o 1 PDF separato per ogni blocco)
  */
 
 const ReportManager = {
-  currentFilter: "all", // "all" | "1-4" | "5-8" | "5" | "6" | "7" | "8" ...
+  currentFilter: "block:2", // "block:1" (Sett 1-4), "block:2" (Sett 5-8), ..., "all_blocks", o singola settimana "week:5"
 
   /**
-   * Restituisce i target ORIGINALI prescritti dall'allenatore (non sovrascritti dai log)
-   * per confrontare in modo esatto ciò che è stato chiuso vs ciò che non è stato chiuso.
+   * Calcola dinamicamente i blocchi da 4 settimane disponibili nello storico (es. Blocco 1: Sett 1-4, Blocco 2: Sett 5-8, ...)
+   */
+  getAvailableBlocks(sessions) {
+    const blockMap = new Map();
+    let hasFreeSessions = false;
+
+    (sessions || []).forEach(s => {
+      const slot = ChartsManager.extractTrainingSlot(s);
+      if (slot.week > 0) {
+        const blockNum = Math.ceil(slot.week / 4);
+        const startW = (blockNum - 1) * 4 + 1;
+        const endW = blockNum * 4;
+        if (!blockMap.has(blockNum)) {
+          blockMap.set(blockNum, {
+            blockNum,
+            id: `block:${blockNum}`,
+            startWeek: startW,
+            endWeek: endW,
+            label: `Blocco ${blockNum} (Sett ${startW}–${endW})`,
+            shortLabel: `Sett ${startW}–${endW}`,
+            count: 0
+          });
+        }
+        blockMap.get(blockNum).count++;
+      } else {
+        hasFreeSessions = true;
+      }
+    });
+
+    // Garantisce che Blocco 1 (Sett 1-4) e Blocco 2 (Sett 5-8) siano sempre selezionabili
+    [1, 2].forEach(b => {
+      if (!blockMap.has(b)) {
+        const startW = (b - 1) * 4 + 1;
+        const endW = b * 4;
+        blockMap.set(b, {
+          blockNum: b,
+          id: `block:${b}`,
+          startWeek: startW,
+          endWeek: endW,
+          label: `Blocco ${b} (Sett ${startW}–${endW})`,
+          shortLabel: `Sett ${startW}–${endW}`,
+          count: 0
+        });
+      }
+    });
+
+    const blocks = Array.from(blockMap.values()).sort((a, b) => a.blockNum - b.blockNum);
+    return { blocks, hasFreeSessions };
+  },
+
+  /**
+   * Restituisce i target ORIGINALI prescritti dall'allenatore
    */
   getOriginalProgrammedExercise(week, dayNumber, exerciseName, routineId) {
-    // 1. Casi in cui buildBlock2Routines precompilava i log parziali: usiamo il target prescritto esatto
     const w = Number(week) || 0;
     const d = Number(dayNumber) || 0;
     const norm = Store.normalizeExerciseName(exerciseName);
@@ -92,7 +142,6 @@ const ReportManager = {
       }
     }
 
-    // 2. Altrimenti cerca nella routine predefinita originale (DEFAULT_ROUTINES)
     let templateRoutine = null;
     if (typeof DEFAULT_ROUTINES !== "undefined") {
       if (routineId) {
@@ -145,44 +194,54 @@ const ReportManager = {
 
   /**
    * Confronta le serie eseguite con il target programmato.
-   * Restituisce: { status: "closed"|"exceeded"|"partial"|"missed"|"free", statusLabel, diffText }
+   * Rileva anche attività "FUORI PROGRAMMA":
+   *  - Esercizi non presenti nella scheda del giorno (es. Avambracci, Bicipiti polpaccio, Alzate cavo, Lat extra)
+   *  - Sessioni libere
+   *  - Serie extra aggiunte oltre il programma o carichi molto superiori al protocollo
    */
-  evaluateExercise(target, actualSets, notes = "") {
+  evaluateExercise(target, actualSets, notes = "", isFreeSession = false) {
     const doneSets = (actualSets || []).filter(s => s.completed);
     const lowerNote = (notes || "").toLowerCase();
 
-    // 0 serie completate => Saltato / Non chiuso
     if (doneSets.length === 0) {
       const tCount = target && target.sets ? target.sets.length : 0;
       return {
         status: "missed",
         statusLabel: "SALTATO",
-        diffText: tCount > 0 ? `0/${tCount} serie eseguite` : "Non eseguito"
+        diffText: tCount > 0 ? `0/${tCount} serie eseguite` : "Non eseguito",
+        offProgram: false,
+        offProgramReason: ""
       };
     }
 
-    // Nessun target predefinito (es. esercizio extra / sessione libera)
-    if (!target || !target.sets || target.sets.length === 0) {
+    if (isFreeSession || !target || !target.sets || target.sets.length === 0) {
       return {
-        status: "free",
-        statusLabel: "EXTRA",
-        diffText: `${doneSets.length} serie registrate`
+        status: "offprogram",
+        statusLabel: "FUORI PROG.",
+        diffText: isFreeSession
+          ? `Sessione libera (${doneSets.length} serie)`
+          : `Esercizio extra non in scheda (${doneSets.length} serie)`,
+        offProgram: true,
+        offProgramReason: isFreeSession
+          ? "Sessione libera fuori programma"
+          : "Esercizio aggiunto fuori dalla scheda del giorno"
       };
     }
 
     const tSets = target.sets;
     const issues = [];
     const positives = [];
+    let extraSetsCount = 0;
+    let maxWeightOvershoot = 0;
 
-    // 1. Controlla numero di serie completate
     if (doneSets.length < tSets.length) {
       const missingSets = tSets.length - doneSets.length;
-      issues.push(`${doneSets.length}/${tSets.length} serie (-${missingSets} ${missingSets === 1 ? "serie" : "serie"})`);
+      issues.push(`${doneSets.length}/${tSets.length} serie (-${missingSets})`);
     } else if (doneSets.length > tSets.length) {
-      positives.push(`+${doneSets.length - tSets.length} serie extra`);
+      extraSetsCount = doneSets.length - tSets.length;
+      positives.push(`+${extraSetsCount} serie extra`);
     }
 
-    // 2. Controlla rep e carico serie per serie
     const pairs = Math.min(doneSets.length, tSets.length);
     let hasWeightExceeded = false;
     let hasRepExceeded = false;
@@ -195,7 +254,6 @@ const ReportManager = {
       const tR = Number(t.reps) || 0;
       const aR = Number(a.reps) || 0;
 
-      // Controllo carico (solo se il programma fissava un peso > 0)
       if (tW > 0 && aW > 0) {
         if (aW < tW) {
           const diffW = Math.round((tW - aW) * 100) / 100;
@@ -203,11 +261,11 @@ const ReportManager = {
         } else if (aW > tW) {
           const diffW = Math.round((aW - tW) * 100) / 100;
           hasWeightExceeded = true;
+          if (diffW > maxWeightOvershoot) maxWeightOvershoot = diffW;
           positives.push(`S${i + 1}: +${diffW}kg (${aW}kg)`);
         }
       }
 
-      // Controllo ripetizioni (solo se il carico non è stato aumentato sopra target)
       if (tR > 0 && aR < tR && !(tW > 0 && aW > tW)) {
         issues.push(`S${i + 1}: ${aR}/${tR} rep (-${tR - aR})`);
       } else if (tR > 0 && aR > tR) {
@@ -216,22 +274,33 @@ const ReportManager = {
       }
     }
 
-    // Controlla eventuali segnalazioni esplicite di stop/dolore nelle note
     const hasPainWarning = /basta per|impossibile|mal di schiena|dolor|senza fermo/.test(lowerNote);
+    const hasOffProgramVariation = extraSetsCount > 0 || maxWeightOvershoot >= 5;
+    let offProgramReason = "";
+    if (extraSetsCount > 0 && maxWeightOvershoot >= 5) {
+      offProgramReason = `+${extraSetsCount} serie extra e carico +${maxWeightOvershoot}kg sopra target`;
+    } else if (extraSetsCount > 0) {
+      offProgramReason = `+${extraSetsCount} serie extra aggiunte rispetto alla scheda`;
+    } else if (maxWeightOvershoot >= 5) {
+      offProgramReason = `Carico fuori target (+${maxWeightOvershoot}kg rispetto al prescritto)`;
+    }
 
     if (issues.length > 0) {
-      // Caso speciale: carico superato ma meno serie (es. Stacco Sumo 160x2 / 170x2 senza back-off)
       if (hasWeightExceeded) {
         return {
           status: "partial",
           statusLabel: "PR / PARZIALE",
-          diffText: [...positives.slice(0, 2), ...issues.slice(0, 2)].join(" • ")
+          diffText: [...positives.slice(0, 2), ...issues.slice(0, 2)].join(" • "),
+          offProgram: hasOffProgramVariation,
+          offProgramReason
         };
       }
       return {
         status: "partial",
         statusLabel: "NON CHIUSO",
-        diffText: issues.slice(0, 3).join(" • ")
+        diffText: issues.slice(0, 3).join(" • "),
+        offProgram: hasOffProgramVariation,
+        offProgramReason
       };
     }
 
@@ -239,31 +308,65 @@ const ReportManager = {
       return {
         status: "exceeded",
         statusLabel: "SUPERATO",
-        diffText: positives.slice(0, 3).join(" • ")
+        diffText: positives.slice(0, 3).join(" • "),
+        offProgram: hasOffProgramVariation,
+        offProgramReason
       };
     }
 
     return {
       status: "closed",
       statusLabel: hasPainWarning ? "CHIUSO (NOTA)" : "CHIUSO",
-      diffText: "Target completato"
+      diffText: "Target completato",
+      offProgram: false,
+      offProgramReason: ""
     };
   },
 
   /**
-   * Costruisce i dati strutturati completi per preview e PDF
+   * Costruisce i dati strutturati del report per un filtro (blocco da 4 settimane, settimana singola o libero)
    */
-  buildReportData(filter = "all") {
+  buildReportData(filter = "block:2") {
     const allHistory = Store.getHistory();
     const ordered = ChartsManager.sortByTrainingCalendar(allHistory);
 
+    let filterLabel = "Tutte le Settimane";
+    let fileTag = "completo";
+
     const filteredSessions = ordered.filter(session => {
       const slot = ChartsManager.extractTrainingSlot(session);
-      if (filter === "all") return true;
-      if (filter === "1-4") return slot.week >= 1 && slot.week <= 4;
-      if (filter === "5-8") return slot.week >= 5 && slot.week <= 8;
+      if (filter === "all_blocks" || filter === "all") return true;
+      if (filter === "free") return slot.week === 0;
+      if (filter.startsWith("block:")) {
+        const blockNum = parseInt(filter.split(":")[1], 10);
+        const startW = (blockNum - 1) * 4 + 1;
+        const endW = blockNum * 4;
+        return slot.week >= startW && slot.week <= endW;
+      }
+      if (filter.startsWith("week:")) {
+        const w = parseInt(filter.split(":")[1], 10);
+        return slot.week === w;
+      }
       return String(slot.week) === String(filter);
     });
+
+    if (filter.startsWith("block:")) {
+      const blockNum = parseInt(filter.split(":")[1], 10);
+      const startW = (blockNum - 1) * 4 + 1;
+      const endW = blockNum * 4;
+      filterLabel = `Blocco ${blockNum} (Settimane ${startW}–${endW})`;
+      fileTag = `Blocco${blockNum}_Sett${startW}-${endW}`;
+    } else if (filter.startsWith("week:")) {
+      const w = parseInt(filter.split(":")[1], 10);
+      filterLabel = `Settimana ${w}`;
+      fileTag = `Sett${w}`;
+    } else if (filter === "free") {
+      filterLabel = "Sessioni Libere (Fuori Programma)";
+      fileTag = "Sessioni_Libere";
+    } else {
+      filterLabel = "Tutti i Blocchi (4 settimane ciascuno)";
+      fileTag = "Tutti_Blocchi";
+    }
 
     const stats = {
       totalSessions: filteredSessions.length,
@@ -273,16 +376,25 @@ const ReportManager = {
       exceededCount: 0,
       partialCount: 0,
       missedCount: 0,
-      freeCount: 0
+      offProgramCount: 0
     };
 
     const issuesSummary = [];
+    const offProgramSummary = [];
     const sessionReports = [];
+
+    // Rileva anche eventuali sessioni duplicate nello stesso (Sett, Giorno) come nota fuori programma
+    const slotSeenCounts = new Map();
 
     filteredSessions.forEach(session => {
       const slot = ChartsManager.extractTrainingSlot(session);
+      const isFreeSession = slot.week === 0;
+      const slotKey = isFreeSession ? `FREE_${session.id}` : `S${slot.week}_G${slot.day}`;
+      const occ = (slotSeenCounts.get(slotKey) || 0) + 1;
+      slotSeenCounts.set(slotKey, occ);
+
       const slotLabel = slot.week > 0
-        ? (slot.day > 0 ? `Sett ${slot.week} • Giorno ${slot.day}` : `Sett ${slot.week}`)
+        ? (slot.day > 0 ? `Sett ${slot.week} • Giorno ${slot.day}${occ > 1 ? ` (#${occ})` : ""}` : `Sett ${slot.week}`)
         : "Sessione Libera";
 
       const rows = [];
@@ -290,8 +402,10 @@ const ReportManager = {
       let sessionSets = 0;
 
       (session.exercises || []).forEach(ex => {
-        const target = this.getOriginalProgrammedExercise(slot.week, slot.day, ex.name, session.routineId);
-        const evaluation = this.evaluateExercise(target, ex.sets, ex.notes);
+        const target = isFreeSession
+          ? null
+          : this.getOriginalProgrammedExercise(slot.week, slot.day, ex.name, session.routineId);
+        const evaluation = this.evaluateExercise(target, ex.sets, ex.notes, isFreeSession);
         const doneSets = (ex.sets || []).filter(s => s.completed);
 
         doneSets.forEach(s => {
@@ -303,27 +417,33 @@ const ReportManager = {
         else if (evaluation.status === "exceeded") stats.exceededCount++;
         else if (evaluation.status === "partial") stats.partialCount++;
         else if (evaluation.status === "missed") stats.missedCount++;
-        else stats.freeCount++;
+
+        if (evaluation.offProgram) stats.offProgramCount++;
 
         const row = {
           slotLabel,
           week: slot.week,
           day: slot.day,
           exerciseName: ex.name,
-          programmed: target ? target.label : "Libero / Extra",
+          programmed: target ? target.label : "Fuori Programma",
           actual: this.formatActualSets(ex.sets),
           status: evaluation.status,
           statusLabel: evaluation.statusLabel,
           diffText: evaluation.diffText,
+          offProgram: evaluation.offProgram,
+          offProgramReason: evaluation.offProgramReason,
           notes: (ex.notes || "").trim()
         };
 
         rows.push(row);
 
-        // Inserisci nel box critico in cima se NON CHIUSO, PARZIALE, SALTATO o nota infortunio/dolore
         const hasPainNote = /mal di schiena|gomiti|braccio|dolor|non lo farò|senza fermo/i.test(row.notes);
         if (evaluation.status === "partial" || evaluation.status === "missed" || hasPainNote) {
           issuesSummary.push(row);
+        }
+
+        if (evaluation.offProgram) {
+          offProgramSummary.push(row);
         }
       });
 
@@ -335,6 +455,7 @@ const ReportManager = {
         slotLabel,
         week: slot.week,
         day: slot.day,
+        isDuplicateSlot: occ > 1,
         title: session.routineName || slotLabel,
         durationMinutes: session.durationMinutes || 0,
         volumeKg: Math.round(sessionVol || session.totalVolumeKg || 0),
@@ -343,24 +464,26 @@ const ReportManager = {
       });
     });
 
-    const filterLabels = {
-      all: "Tutte le Settimane",
-      "1-4": "Blocco 1 (Sett 1–4)",
-      "5-8": "Blocco 2 (Sett 5–8)"
-    };
-
     return {
       generatedAt: new Date(),
       filter,
-      filterLabel: filterLabels[filter] || `Settimana ${filter}`,
+      filterLabel,
+      fileTag,
       stats,
       issuesSummary,
+      offProgramSummary,
       sessions: sessionReports
     };
   },
 
   openModal() {
-    this.currentFilter = "all";
+    const allHistory = Store.getHistory();
+    const { blocks } = this.getAvailableBlocks(allHistory);
+    // Seleziona automaticamente l'ultimo blocco da 4 settimane che contiene sessioni (es. Blocco 2: Sett 5–8)
+    const activeBlocks = blocks.filter(b => b.count > 0);
+    const defaultBlock = activeBlocks.length > 0 ? activeBlocks[activeBlocks.length - 1] : blocks[0];
+    this.currentFilter = defaultBlock ? defaultBlock.id : "block:1";
+
     const modal = document.getElementById("modal-results-report");
     if (!modal) return;
     this.renderPreview();
@@ -375,19 +498,21 @@ const ReportManager = {
   renderPreview() {
     const filterWrap = document.getElementById("report-filter-chips");
     const previewContainer = document.getElementById("report-preview-content");
+    const btnDownload = document.getElementById("btn-download-pdf");
     if (!previewContainer) return;
 
     const allHistory = Store.getHistory();
+    const { blocks, hasFreeSessions } = this.getAvailableBlocks(allHistory);
     const availableWeeks = Array.from(
       new Set(allHistory.map(s => ChartsManager.extractTrainingSlot(s).week).filter(w => w > 0))
     ).sort((a, b) => a - b);
 
     if (filterWrap) {
       const chips = [
-        { val: "all", label: "Tutte" },
-        { val: "1-4", label: "Sett 1–4" },
-        { val: "5-8", label: "Sett 5–8" },
-        ...availableWeeks.map(w => ({ val: String(w), label: `Sett ${w}` }))
+        ...blocks.map(b => ({ val: b.id, label: `${b.label}${b.count > 0 ? ` (${b.count})` : ""}` })),
+        { val: "all_blocks", label: "Tutti i Blocchi (PDF separati)" },
+        ...(hasFreeSessions ? [{ val: "free", label: "Sessioni Libere" }] : []),
+        ...availableWeeks.map(w => ({ val: `week:${w}`, label: `Sett ${w}` }))
       ];
       filterWrap.innerHTML = chips.map(c => `
         <button type="button" class="filter-chip ${this.currentFilter === c.val ? 'active' : ''}" onclick="ReportManager.setFilter('${c.val}')">
@@ -397,12 +522,21 @@ const ReportManager = {
     }
 
     const report = this.buildReportData(this.currentFilter);
-    const { stats, issuesSummary, sessions } = report;
+    const { stats, issuesSummary, offProgramSummary, sessions } = report;
+
+    if (btnDownload) {
+      if (this.currentFilter === "all_blocks") {
+        const nonEmptyBlocks = blocks.filter(b => b.count > 0).length;
+        btnDownload.textContent = `⬇️ Scarica ${nonEmptyBlocks} PDF (4 sett)`;
+      } else {
+        btnDownload.textContent = `⬇️ Scarica PDF (${report.fileTag.replace(/_/g, " ")})`;
+      }
+    }
 
     if (sessions.length === 0) {
       previewContainer.innerHTML = `
         <div class="card text-center" style="padding: 28px 16px;">
-          <p style="color: var(--text-secondary);">Nessun allenamento registrato per questo filtro.</p>
+          <p style="color: var(--text-secondary);">Nessun allenamento registrato per ${App.escapeHtml(report.filterLabel)}.</p>
         </div>
       `;
       return;
@@ -416,13 +550,14 @@ const ReportManager = {
       if (status === "exceeded") return "rep-badge-exceeded";
       if (status === "partial") return "rep-badge-partial";
       if (status === "missed") return "rep-badge-missed";
+      if (status === "offprogram") return "rep-badge-offprogram";
       return "rep-badge-free";
     };
 
     const issuesHtml = issuesSummary.length > 0
       ? `
         <div class="report-issues-box">
-          <div class="report-block-title" style="color: #fbbf24;">⚠️ Punti di attenzione (Non chiusi / Parziali / Note)</div>
+          <div class="report-block-title" style="color: #fbbf24;">⚠️ 1. Non chiusi / Parziali / Note (${issuesSummary.length})</div>
           ${issuesSummary.map(item => `
             <div class="report-issue-row">
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
@@ -439,13 +574,36 @@ const ReportManager = {
           `).join("")}
         </div>
       `
-      : `<div class="card" style="border-color: rgba(16,185,129,0.35); color: #34d399; font-size: 0.82rem; padding: 10px 12px;">✓ Tutti gli esercizi in questo periodo sono stati chiusi senza criticità!</div>`;
+      : `<div class="card" style="border-color: rgba(16,185,129,0.35); color: #34d399; font-size: 0.82rem; padding: 10px 12px;">✓ Tutti gli esercizi di questo blocco sono stati chiusi!</div>`;
+
+    const offProgramHtml = offProgramSummary.length > 0
+      ? `
+        <div class="report-offprog-box">
+          <div class="report-block-title" style="color: #c4b5fd;">⚡ 2. Fuori Programma / Extra (${offProgramSummary.length})</div>
+          ${offProgramSummary.map(item => `
+            <div class="report-offprog-row">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <strong style="font-size: 0.82rem; color: var(--text-primary);">${App.escapeHtml(item.slotLabel)} — ${App.escapeHtml(item.exerciseName)}</strong>
+                <span class="rep-badge rep-badge-offprogram">FUORI PROG.</span>
+              </div>
+              <div style="font-size: 0.74rem; color: var(--text-secondary); margin-top: 2px;">
+                Eseguito: <span style="font-family: var(--font-mono); color: var(--text-primary);">${App.escapeHtml(item.actual)}</span>
+              </div>
+              <div style="font-size: 0.73rem; color: #c4b5fd; margin-top: 2px;">
+                ${App.escapeHtml(item.offProgramReason)}${item.notes ? ` • ${App.escapeHtml(item.notes)}` : ""}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `
+      : "";
 
     const sessionsHtml = sessions.map(sess => `
       <div class="report-session-card">
         <div class="report-session-head">
           <div>
             <span class="routine-week-badge">${App.escapeHtml(sess.slotLabel)}</span>
+            ${sess.isDuplicateSlot ? `<span class="rep-badge rep-badge-offprogram" style="margin-left: 4px;">Sessione extra</span>` : ""}
             <div style="font-weight: 700; font-size: 0.9rem; margin-top: 4px;">${App.escapeHtml(sess.title)}</div>
           </div>
           <div style="text-align: right; font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary);">
@@ -464,9 +622,9 @@ const ReportManager = {
                 <div><span class="rep-lbl">Target:</span> ${App.escapeHtml(r.programmed)}</div>
                 <div><span class="rep-lbl">Fatto:</span> <strong>${App.escapeHtml(r.actual)}</strong></div>
               </div>
-              ${r.status !== "closed" || r.notes ? `
+              ${r.status !== "closed" || r.notes || r.offProgram ? `
                 <div class="report-ex-diff">
-                  ${r.diffText && r.diffText !== "Target completato" ? `<span style="color: ${r.status === 'exceeded' ? '#60a5fa' : '#fbbf24'}; font-weight: 600;">${App.escapeHtml(r.diffText)}</span>` : ""}
+                  ${r.diffText && r.diffText !== "Target completato" ? `<span style="color: ${r.status === 'offprogram' ? '#c4b5fd' : r.status === 'exceeded' ? '#60a5fa' : '#fbbf24'}; font-weight: 600;">${App.escapeHtml(r.diffText)}</span>` : ""}
                   ${r.notes ? `<span style="color: var(--text-secondary);">${r.diffText && r.diffText !== "Target completato" ? " • " : ""}${App.escapeHtml(r.notes)}</span>` : ""}
                 </div>
               ` : ""}
@@ -484,28 +642,26 @@ const ReportManager = {
         </div>
         <div class="stat-box">
           <div class="stat-box-val" style="color: #34d399;">${closedTotal}</div>
-          <div class="stat-box-lbl">Chiusi / PR</div>
+          <div class="stat-box-lbl">Chiusi</div>
         </div>
         <div class="stat-box">
           <div class="stat-box-val" style="color: #fbbf24;">${notClosedTotal}</div>
           <div class="stat-box-lbl">Non Chiusi</div>
         </div>
         <div class="stat-box">
-          <div class="stat-box-val">${(stats.totalVolumeKg / 1000).toFixed(1)}t</div>
-          <div class="stat-box-lbl">Volume Tot</div>
+          <div class="stat-box-val" style="color: #c4b5fd;">${stats.offProgramCount}</div>
+          <div class="stat-box-lbl">Fuori Prog.</div>
         </div>
       </div>
 
       ${issuesHtml}
+      ${offProgramHtml}
 
-      <div class="report-block-title" style="margin-top: 14px;">📋 Dettaglio Completo (Settimana → Giorno)</div>
+      <div class="report-block-title" style="margin-top: 14px;">📋 3. Dettaglio Completo — ${App.escapeHtml(report.filterLabel)}</div>
       ${sessionsHtml}
     `;
   },
 
-  /**
-   * Pulisce eventuali emoji o caratteri non supportati dal font PDF standard Helvetica
-   */
   cleanPdfText(str) {
     if (!str) return "";
     return String(str)
@@ -521,12 +677,11 @@ const ReportManager = {
   },
 
   /**
-   * Genera il documento PDF A4 pulito e ordinato tramite jsPDF + AutoTable
+   * Genera il documento PDF A4 pulito per un blocco da 4 settimane
    */
   buildPdfDocument(report) {
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-      return null;
-    }
+    if (!window.jspdf || !window.jspdf.jsPDF) return null;
+
     const clean = (s) => this.cleanPdfText(s);
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
@@ -539,15 +694,15 @@ const ReportManager = {
 
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("REPORT RISULTATI ALLENAMENTO", margin, 12);
+    doc.setFontSize(15);
+    doc.text(clean(`REPORT ALLENAMENTO - ${report.filterLabel.toUpperCase()}`), margin, 12);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(203, 213, 225);
     const dateStr = report.generatedAt.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
-    doc.text(clean(`Atleta: Luigi  |  Periodo: ${report.filterLabel}  |  Generato il ${dateStr}`), margin, 19);
-    doc.text("Ordinato per Calendario di Allenamento (Settimana -> Giorno)", margin, 24);
+    doc.text(clean(`Atleta: Luigi  |  Programma 4 Settimane  |  Generato il ${dateStr}`), margin, 19);
+    doc.text(clean(`Volume totale periodo: ${report.stats.totalVolumeKg.toLocaleString("it-IT")} kg  |  Serie completate: ${report.stats.totalSetsCompleted}`), margin, 24);
 
     // 2. 4 Box KPI puliti
     const kpiY = 33;
@@ -560,7 +715,7 @@ const ReportManager = {
       { label: "SESSIONI", value: String(report.stats.totalSessions), color: [30, 41, 59] },
       { label: "CHIUSI / SUPERATI", value: String(closedTotal), color: [5, 150, 105] },
       { label: "NON CHIUSI / SALTATI", value: String(notClosedTotal), color: [217, 119, 6] },
-      { label: "VOLUME TOTALE", value: `${report.stats.totalVolumeKg.toLocaleString("it-IT")} kg`, color: [37, 99, 235] }
+      { label: "FUORI PROGRAMMA", value: String(report.stats.offProgramCount), color: [124, 58, 237] }
     ];
 
     kpis.forEach((k, idx) => {
@@ -581,13 +736,15 @@ const ReportManager = {
     });
 
     let cursorY = kpiY + 22;
+    let secNum = 1;
 
-    // 3. Sezione Evidenza: NON CHIUSI / PARZIALI / NOTE CRITICHE
+    // 3. Sezione Evidenza: NON CHIUSI / PARZIALI / SALTATI
     if (report.issuesSummary.length > 0) {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
+      doc.setFontSize(10.5);
       doc.setTextColor(180, 83, 9);
-      doc.text("1. PUNTI DI ATTENZIONE (NON CHIUSI, PARZIALI E NOTE)", margin, cursorY);
+      doc.text(`${secNum}. PUNTI DI ATTENZIONE (NON CHIUSI, PARZIALI E NOTE)`, margin, cursorY);
+      secNum++;
       cursorY += 3;
 
       doc.autoTable({
@@ -602,13 +759,13 @@ const ReportManager = {
           clean(`${item.statusLabel}: ${item.diffText}${item.notes ? " | " + item.notes : ""}`)
         ]),
         theme: "grid",
-        styles: { fontSize: 7.8, cellPadding: 2.2, textColor: [30, 41, 59], lineColor: [226, 232, 240] },
+        styles: { fontSize: 7.7, cellPadding: 2.1, textColor: [30, 41, 59], lineColor: [226, 232, 240] },
         headStyles: { fillColor: [254, 243, 199], textColor: [146, 64, 14], fontStyle: "bold" },
         columnStyles: {
-          0: { cellWidth: 26, fontStyle: "bold" },
-          1: { cellWidth: 36, fontStyle: "bold" },
+          0: { cellWidth: 27, fontStyle: "bold" },
+          1: { cellWidth: 35, fontStyle: "bold" },
           2: { cellWidth: 28 },
-          3: { cellWidth: 32 },
+          3: { cellWidth: 31 },
           4: { cellWidth: "auto" }
         },
         didParseCell: (data) => {
@@ -620,18 +777,61 @@ const ReportManager = {
         }
       });
 
-      cursorY = doc.lastAutoTable.finalY + 8;
+      cursorY = doc.lastAutoTable.finalY + 7;
     }
 
-    // 4. Sezione Dettaglio Completo per Settimana -> Giorno
-    if (cursorY > 255) {
+    // 4. Sezione Dedicata: FUORI PROGRAMMA (Extra, Sessioni libere, Variazioni)
+    if (report.offProgramSummary.length > 0) {
+      if (cursorY > 245) {
+        doc.addPage();
+        cursorY = 16;
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(109, 40, 217);
+      doc.text(`${secNum}. ATTIVITA FUORI PROGRAMMA (ESERCIZI EXTRA E VARIAZIONI)`, margin, cursorY);
+      secNum++;
+      cursorY += 3;
+
+      doc.autoTable({
+        startY: cursorY,
+        margin: { left: margin, right: margin },
+        head: [["Sett / Giorno", "Esercizio", "Eseguito", "Motivo Fuori Programma & Note"]],
+        body: report.offProgramSummary.map(item => [
+          clean(item.slotLabel),
+          clean(item.exerciseName),
+          clean(item.actual),
+          clean(`${item.offProgramReason}${item.notes ? " | " + item.notes : ""}`)
+        ]),
+        theme: "grid",
+        styles: { fontSize: 7.7, cellPadding: 2.1, textColor: [30, 41, 59], lineColor: [226, 232, 240] },
+        headStyles: { fillColor: [237, 233, 254], textColor: [91, 33, 182], fontStyle: "bold" },
+        columnStyles: {
+          0: { cellWidth: 28, fontStyle: "bold" },
+          1: { cellWidth: 40, fontStyle: "bold" },
+          2: { cellWidth: 34 },
+          3: { cellWidth: "auto" }
+        },
+        didParseCell: (data) => {
+          if (data.section === "body" && data.column.index === 3) {
+            data.cell.styles.textColor = [91, 33, 182];
+          }
+        }
+      });
+
+      cursorY = doc.lastAutoTable.finalY + 7;
+    }
+
+    // 5. Sezione Dettaglio Completo per Settimana -> Giorno
+    if (cursorY > 250) {
       doc.addPage();
       cursorY = 16;
     }
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
+    doc.setFontSize(10.5);
     doc.setTextColor(15, 23, 42);
-    doc.text("2. DETTAGLIO COMPLETO PER SETTIMANA E GIORNO", margin, cursorY);
+    doc.text(`${secNum}. DETTAGLIO COMPLETO PER SETTIMANA E GIORNO`, margin, cursorY);
     cursorY += 4;
 
     report.sessions.forEach((sess) => {
@@ -647,7 +847,8 @@ const ReportManager = {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8.8);
       doc.setTextColor(15, 23, 42);
-      doc.text(clean(sess.title), margin + 2.5, cursorY + 5);
+      const dupTag = sess.isDuplicateSlot ? " [SESSIONE EXTRA]" : "";
+      doc.text(clean(`${sess.title}${dupTag}`), margin + 2.5, cursorY + 5);
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
@@ -668,14 +869,14 @@ const ReportManager = {
           clean([r.diffText !== "Target completato" ? r.diffText : "", r.notes].filter(Boolean).join(" | ") || "-")
         ]),
         theme: "striped",
-        styles: { fontSize: 7.8, cellPadding: 2, textColor: [30, 41, 59], lineColor: [226, 232, 240] },
+        styles: { fontSize: 7.7, cellPadding: 2, textColor: [30, 41, 59], lineColor: [226, 232, 240] },
         headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: "bold" },
         alternateRowStyles: { fillColor: [248, 250, 252] },
         columnStyles: {
           0: { cellWidth: 40, fontStyle: "bold" },
           1: { cellWidth: 32 },
           2: { cellWidth: 34 },
-          3: { cellWidth: 23, fontStyle: "bold", halign: "center" },
+          3: { cellWidth: 24, fontStyle: "bold", halign: "center" },
           4: { cellWidth: "auto" }
         },
         didParseCell: (data) => {
@@ -693,6 +894,9 @@ const ReportManager = {
             } else if (label === "SALTATO") {
               data.cell.styles.textColor = [185, 28, 28];
               data.cell.styles.fillColor = [254, 242, 242];
+            } else if (label.includes("FUORI PROG")) {
+              data.cell.styles.textColor = [109, 40, 217];
+              data.cell.styles.fillColor = [237, 233, 254];
             }
           }
         }
@@ -701,14 +905,14 @@ const ReportManager = {
       cursorY = doc.lastAutoTable.finalY + 5;
     });
 
-    // 5. Numeri di pagina nel footer
+    // 6. Footer con nome blocco e numero pagina
     const totalPages = doc.internal.getNumberOfPages();
     for (let p = 1; p <= totalPages; p++) {
       doc.setPage(p);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7.5);
       doc.setTextColor(148, 163, 184);
-      doc.text("HevyTrack - Report Allenamento Luigi", margin, 291);
+      doc.text(clean(`HevyTrack - Luigi - ${report.filterLabel}`), margin, 291);
       doc.text(`Pagina ${p} di ${totalPages}`, pageW - margin, 291, { align: "right" });
     }
 
@@ -716,32 +920,86 @@ const ReportManager = {
   },
 
   async downloadPdf(shareIfSupported = false) {
-    const report = this.buildReportData(this.currentFilter);
-    if (report.sessions.length === 0) {
-      App.showToast("Nessuna sessione da esportare per questo filtro.");
-      return;
-    }
-
-    const doc = this.buildPdfDocument(report);
-    if (!doc) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
       App.showToast("Libreria PDF non caricata: apro la stampa del foglio.");
       window.print();
       return;
     }
 
-    const dateTag = report.generatedAt.toISOString().slice(0, 10);
-    const filterTag = this.currentFilter === "all" ? "completo" : `sett_${this.currentFilter}`;
-    const filename = `Risultati_Allenamento_${filterTag}_${dateTag}.pdf`;
+    const dateTag = new Date().toISOString().slice(0, 10);
 
-    // Se richiesto "Condividi" su iPhone (WhatsApp, File, ecc.)
+    // Se l'utente ha selezionato "Tutti i Blocchi", genera 1 PDF separato per ogni blocco da 4 settimane!
+    if (this.currentFilter === "all_blocks") {
+      const allHistory = Store.getHistory();
+      const { blocks, hasFreeSessions } = this.getAvailableBlocks(allHistory);
+      const targets = blocks.filter(b => b.count > 0).map(b => b.id);
+      if (hasFreeSessions) targets.push("free");
+
+      if (targets.length === 0) {
+        App.showToast("Nessuna sessione da esportare.");
+        return;
+      }
+
+      const filesToShare = [];
+      for (const blockFilter of targets) {
+        const rep = this.buildReportData(blockFilter);
+        if (rep.sessions.length === 0) continue;
+        const doc = this.buildPdfDocument(rep);
+        const filename = `Report_${rep.fileTag}_${dateTag}.pdf`;
+
+        if (shareIfSupported && navigator.share && navigator.canShare) {
+          const blob = doc.output("blob");
+          filesToShare.push(new File([blob], filename, { type: "application/pdf" }));
+        } else {
+          doc.save(filename);
+          await new Promise(res => setTimeout(res, 250));
+        }
+      }
+
+      if (shareIfSupported && filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
+        try {
+          await navigator.share({
+            title: "Report Allenamento (Blocchi 4 settimane)",
+            files: filesToShare
+          });
+          App.showToast(`Condivisi ${filesToShare.length} PDF (divisi ogni 4 settimane)!`);
+          return;
+        } catch (err) {
+          if (err && err.name === "AbortError") return;
+          // Fallback a download
+          filesToShare.forEach(f => {
+            const url = URL.createObjectURL(f);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = f.name;
+            a.click();
+            URL.revokeObjectURL(url);
+          });
+        }
+      }
+
+      App.showToast(`📄 Scaricati ${targets.length} PDF separati (ogni 4 settimane)!`);
+      return;
+    }
+
+    // Singolo blocco da 4 settimane (o singola settimana)
+    const report = this.buildReportData(this.currentFilter);
+    if (report.sessions.length === 0) {
+      App.showToast("Nessuna sessione da esportare per questo blocco.");
+      return;
+    }
+
+    const doc = this.buildPdfDocument(report);
+    const filename = `Report_${report.fileTag}_${dateTag}.pdf`;
+
     if (shareIfSupported && navigator.share && navigator.canShare) {
       try {
         const blob = doc.output("blob");
         const file = new File([blob], filename, { type: "application/pdf" });
         if (navigator.canShare({ files: [file] })) {
           await navigator.share({
-            title: "Report Risultati Allenamento",
-            text: `Report allenamento (${report.filterLabel})`,
+            title: `Report ${report.filterLabel}`,
+            text: `Report allenamento ${report.filterLabel}`,
             files: [file]
           });
           App.showToast("PDF condiviso!");
@@ -752,7 +1010,6 @@ const ReportManager = {
       }
     }
 
-    // Download diretto del PDF (compatibile Desktop + Safari iOS)
     doc.save(filename);
     App.showToast(`📄 PDF scaricato: ${filename}`);
   }
