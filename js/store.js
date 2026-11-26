@@ -1,6 +1,6 @@
 /**
- * Store - Gestione LocalStorage, Migrazione Automatica, Calcoli 1RM,
- * Sovraccarico Progressivo, Programmi Settimanali e Backup JSON
+ * Store - Gestione LocalStorage, Migrazione Automatica, Hook CloudSync,
+ * Calcoli 1RM, Sovraccarico Progressivo, Programmi Settimanali e Backup JSON
  */
 
 const STORAGE_KEYS = {
@@ -9,7 +9,9 @@ const STORAGE_KEYS = {
   ACTIVE_WORKOUT: "hevy_active_workout_v1",
   SETTINGS: "hevy_settings_v1",
   DATA_VERSION: "hevy_data_version_v1",
-  UI_STATE: "hevy_ui_state_v1"
+  UI_STATE: "hevy_ui_state_v1",
+  DELETED_ROUTINES: "hevy_deleted_routines_v1",
+  DELETED_HISTORY: "hevy_deleted_history_v1"
 };
 
 const LEGACY_SAMPLE_ROUTINE_IDS = new Set([
@@ -32,21 +34,21 @@ const Store = {
     const hasHistory = !!localStorage.getItem(STORAGE_KEYS.HISTORY);
 
     if (!hasRoutines && !hasHistory) {
-      this.setRoutines(DEFAULT_ROUTINES);
-      this.setHistory(generateDefaultHistory());
+      this.setRoutines(DEFAULT_ROUTINES, true);
+      this.setHistory(generateDefaultHistory(), true);
       localStorage.setItem(STORAGE_KEYS.DATA_VERSION, DATA_SCHEMA_VERSION);
     } else if (currentVersion !== DATA_SCHEMA_VERSION) {
-      // Migrazione automatica sicura: sostituisce i vecchi dati demo preservando eventuali schede/sessioni personalizzate
+      // Migrazione sicura: sostituisce vecchi demo preservando schede e sessioni dell'utente (es. allenamento di ieri!)
       const existingRoutines = this.getRoutines().filter(r => !LEGACY_SAMPLE_ROUTINE_IDS.has(r.id));
       const defaultRoutineIds = new Set(DEFAULT_ROUTINES.map(r => r.id));
       const customRoutines = existingRoutines.filter(r => !defaultRoutineIds.has(r.id));
-      this.setRoutines([...DEFAULT_ROUTINES, ...customRoutines]);
+      this.setRoutines([...DEFAULT_ROUTINES, ...customRoutines], true);
 
       const existingHistory = this.getHistory().filter(h => !LEGACY_SAMPLE_HISTORY_IDS.has(h.id));
       const defaultHistory = generateDefaultHistory();
       const defaultHistIds = new Set(defaultHistory.map(h => h.id));
       const customHistory = existingHistory.filter(h => !defaultHistIds.has(h.id));
-      this.setHistory([...customHistory, ...defaultHistory]);
+      this.setHistory([...customHistory, ...defaultHistory], true);
 
       localStorage.setItem(STORAGE_KEYS.DATA_VERSION, DATA_SCHEMA_VERSION);
     }
@@ -61,7 +63,34 @@ const Store = {
     }
   },
 
-  // --- UI STATE (Programma e Settimana selezionati) ---
+  // --- DELETED IDS TRACKING (per sync cancellazioni) ---
+  getDeletedRoutineIds() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DELETED_ROUTINES);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  setDeletedRoutineIds(ids) {
+    localStorage.setItem(STORAGE_KEYS.DELETED_ROUTINES, JSON.stringify(ids || []));
+  },
+
+  getDeletedHistoryIds() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DELETED_HISTORY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  setDeletedHistoryIds(ids) {
+    localStorage.setItem(STORAGE_KEYS.DELETED_HISTORY, JSON.stringify(ids || []));
+  },
+
+  // --- UI STATE ---
   getUiState() {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.UI_STATE);
@@ -86,8 +115,11 @@ const Store = {
     }
   },
 
-  setRoutines(routines) {
+  setRoutines(routines, skipCloud = false) {
     localStorage.setItem(STORAGE_KEYS.ROUTINES, JSON.stringify(routines));
+    if (!skipCloud && typeof CloudSync !== "undefined") {
+      CloudSync.schedulePushRoutines();
+    }
   },
 
   getRoutineById(id) {
@@ -104,6 +136,8 @@ const Store = {
     } else {
       list.push(routine);
     }
+    const del = this.getDeletedRoutineIds().filter(d => d !== routine.id);
+    this.setDeletedRoutineIds(del);
     this.setRoutines(list);
     return routine;
   },
@@ -123,6 +157,8 @@ const Store = {
 
   deleteRoutine(id) {
     const list = this.getRoutines().filter(r => r.id !== id);
+    const del = Array.from(new Set([...this.getDeletedRoutineIds(), id]));
+    this.setDeletedRoutineIds(del);
     this.setRoutines(list);
   },
 
@@ -146,13 +182,25 @@ const Store = {
     }
   },
 
-  setHistory(history) {
+  setHistory(history, skipCloud = false) {
     localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
+    if (!skipCloud && typeof CloudSync !== "undefined") {
+      CloudSync.schedulePushHistory();
+    }
+  },
+
+  deleteHistorySession(id) {
+    const history = this.getHistory().filter(h => h.id !== id);
+    const del = Array.from(new Set([...this.getDeletedHistoryIds(), id]));
+    this.setDeletedHistoryIds(del);
+    this.setHistory(history);
   },
 
   saveWorkoutSession(session, updateRoutineDefaults = true) {
     const history = this.getHistory();
     history.unshift(session);
+    const del = this.getDeletedHistoryIds().filter(d => d !== session.id);
+    this.setDeletedHistoryIds(del);
     this.setHistory(history);
 
     if (updateRoutineDefaults && session.routineId) {
@@ -293,7 +341,7 @@ const Store = {
     };
   },
 
-  // --- SOVRACCARICO PROGRESSIVO (PROGRESSIVE OVERLOAD) ---
+  // --- SOVRACCARICO PROGRESSIVO ---
   getProgressiveOverloadSuggestion(exerciseName, currentSets = []) {
     const lastSession = this.getLastSessionForExercise(exerciseName);
     if (!lastSession || !lastSession.exercise || !lastSession.exercise.sets) {
@@ -387,7 +435,7 @@ const Store = {
   exportBackup() {
     const backup = {
       app: "HevyGymTracker",
-      version: "2.0.0",
+      version: "2.1.0",
       dataVersion: DATA_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       routines: this.getRoutines(),
@@ -403,6 +451,8 @@ const Store = {
       if (!data || !Array.isArray(data.routines) || !Array.isArray(data.history)) {
         throw new Error("Formato del file di backup non valido.");
       }
+      this.setDeletedRoutineIds([]);
+      this.setDeletedHistoryIds([]);
       this.setRoutines(data.routines);
       this.setHistory(data.history);
       if (data.settings) this.setSettings(data.settings);
@@ -414,6 +464,8 @@ const Store = {
   },
 
   resetToDefaults() {
+    this.setDeletedRoutineIds([]);
+    this.setDeletedHistoryIds([]);
     this.setRoutines(DEFAULT_ROUTINES);
     this.setHistory(generateDefaultHistory());
     this.clearActiveWorkout();

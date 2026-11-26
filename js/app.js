@@ -41,6 +41,11 @@ const App = {
     // Inizializza i grafici
     ChartsManager.init();
 
+    // Avvia sincronizzazione Cloud Firebase in tempo reale
+    if (typeof CloudSync !== "undefined") {
+      CloudSync.init();
+    }
+
     const exSelect = document.getElementById("chart-exercise-select");
     const metricSelect = document.getElementById("chart-metric-select");
     const rtSelect = document.getElementById("chart-routine-select");
@@ -1392,12 +1397,11 @@ const App = {
 
   deleteHistoryItem(id) {
     if (confirm("Eliminare questa sessione dallo storico?")) {
-      const history = Store.getHistory().filter(h => h.id !== id);
-      Store.setHistory(history);
+      Store.deleteHistorySession(id);
       this.renderHistoryList();
       ChartsManager.populateSelectors();
       ChartsManager.renderCurrentCharts();
-      this.showToast("Sessione eliminata.");
+      this.showToast("Sessione eliminata e sincronizzata.");
     }
   },
 
@@ -1447,6 +1451,20 @@ const App = {
   },
 
   bindSettings() {
+    const cloudPill = document.getElementById("cloud-sync-pill");
+    if (cloudPill) {
+      cloudPill.addEventListener("click", () => {
+        if (typeof CloudSync !== "undefined") CloudSync.syncNow(true);
+      });
+    }
+
+    const btnSyncNow = document.getElementById("btn-sync-now");
+    if (btnSyncNow) {
+      btnSyncNow.addEventListener("click", () => {
+        if (typeof CloudSync !== "undefined") CloudSync.syncNow(true);
+      });
+    }
+
     const btnOpenSettings = document.getElementById("btn-open-settings");
     if (btnOpenSettings) {
       btnOpenSettings.addEventListener("click", () => {
