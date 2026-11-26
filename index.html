@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
 
   <!-- Stili CSS -->
-  <link rel="stylesheet" href="css/style.css?v=6">
+  <link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
   <div id="app">
@@ -499,8 +499,8 @@
     <div class="modal-content" style="max-height: 92vh;">
       <div class="modal-header">
         <div>
-          <h3 class="modal-title">📄 Foglio Risultati</h3>
-          <div style="font-size: 0.74rem; color: var(--text-muted);">Chiusi, non chiusi, serie e note — pronto in PDF</div>
+          <h3 class="modal-title">📄 Foglio Risultati (Blocchi 4 Sett)</h3>
+          <div style="font-size: 0.74rem; color: var(--text-muted);">Chiusi, non chiusi e fuori programma — 1 PDF ogni 4 settimane</div>
         </div>
         <button type="button" class="icon-btn close-modal-btn">✕</button>
       </div>
@@ -538,14 +538,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
   <!-- Moduli Applicazione -->
-  <script src="js/data.js?v=6"></script>
-  <script src="js/anatomy.js?v=6"></script>
-  <script src="js/store.js?v=6"></script>
-  <script src="js/cloud.js?v=6"></script>
-  <script src="js/timer.js?v=6"></script>
-  <script src="js/charts.js?v=6"></script>
-  <script src="js/report.js?v=6"></script>
-  <script src="js/app.js?v=6"></script>
+  <script src="js/data.js?v=7"></script>
+  <script src="js/anatomy.js?v=7"></script>
+  <script src="js/store.js?v=7"></script>
+  <script src="js/cloud.js?v=7"></script>
+  <script src="js/timer.js?v=7"></script>
+  <script src="js/charts.js?v=7"></script>
+  <script src="js/report.js?v=7"></script>
+  <script src="js/app.js?v=7"></script>
 
   <!-- Registrazione Service Worker PWA con aggiornamento automatico -->
   <script>
@@ -559,9 +559,9 @@
 
         let refreshing = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v6")) {
+          if (!refreshing && !sessionStorage.getItem("sw_reloaded_v7")) {
             refreshing = true;
-            sessionStorage.setItem("sw_reloaded_v6", "1");
+            sessionStorage.setItem("sw_reloaded_v7", "1");
             window.location.reload();
           }
         });
