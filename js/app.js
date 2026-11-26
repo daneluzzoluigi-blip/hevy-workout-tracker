@@ -147,9 +147,15 @@ const App = {
       this.renderHistoryList();
     }
 
-    const appMain = document.querySelector(".app-main");
-    if (appMain) appMain.scrollTop = 0;
-    window.scrollTo({ top: 0, behavior: "instant" });
+    const scrollTopNow = () => {
+      const appMain = document.querySelector(".app-main");
+      if (appMain) appMain.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      window.scrollTo(0, 0);
+    };
+    scrollTopNow();
+    requestAnimationFrame(scrollTopNow);
   },
 
   updateActiveNavBadge() {
