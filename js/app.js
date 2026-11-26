@@ -12,6 +12,7 @@ const App = {
   pickerMuscleFilter: "Tutti",
   finishSummaryData: null,
   currentEditorExercises: [],
+  currentHistoryEditorSession: null,
   selectedProgramId: "prog_pdf_s1_s4",
   selectedWeek: 1,
   expandedRoutineIds: new Set(),
@@ -1455,6 +1456,21 @@ const App = {
         Store.saveActiveWorkout(this.activeWorkout);
         this.renderActiveWorkout();
       }
+    } else if (this.activeExercisePickerContext === "history_editor") {
+      if (this.currentHistoryEditorSession) {
+        this.currentHistoryEditorSession.exercises = this.currentHistoryEditorSession.exercises || [];
+        this.currentHistoryEditorSession.exercises.push({
+          name,
+          notes: "",
+          quickTags: [],
+          sets: [
+            { setNumber: 1, weight: 50, reps: 8, completed: true },
+            { setNumber: 2, weight: 50, reps: 8, completed: true },
+            { setNumber: 3, weight: 50, reps: 8, completed: true }
+          ]
+        });
+        this.renderHistoryEditorExercises();
+      }
     }
 
     this.closeModal("modal-exercise-picker");
@@ -1571,9 +1587,14 @@ const App = {
               <h3 class="history-item-title">${this.escapeHtml(item.routineName || "Allenamento")}</h3>
               <div class="history-item-date">${formattedDate}</div>
             </div>
-            <button class="icon-btn" style="color: var(--accent-red);" onclick="App.deleteHistoryItem('${item.id}')" title="Elimina dallo storico">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-            </button>
+            <div style="display: flex; gap: 2px; flex-shrink: 0;">
+              <button class="icon-btn" onclick="App.openHistoryEditor('${item.id}')" title="Modifica sessione">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button class="icon-btn" style="color: var(--accent-red);" onclick="App.deleteHistoryItem('${item.id}')" title="Elimina dallo storico">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+              </button>
+            </div>
           </div>
           <div class="history-metrics-row">
             <div>Volume: <span>${Math.round(item.totalVolumeKg || 0).toLocaleString("it-IT")} kg</span></div>
@@ -1592,10 +1613,196 @@ const App = {
     if (confirm("Eliminare questa sessione dallo storico?")) {
       Store.deleteHistorySession(id);
       this.renderHistoryList();
+      this.renderRoutines();
       ChartsManager.populateSelectors();
       ChartsManager.renderCurrentCharts();
       this.showToast("Sessione eliminata e sincronizzata.");
     }
+  },
+
+  // --- EDITOR SESSIONI GIÀ SALVATE (STORICO) ---
+  openHistoryEditor(sessionId) {
+    const history = Store.getHistory();
+    const session = history.find(h => h.id === sessionId);
+    if (!session) return;
+
+    this.currentHistoryEditorSession = JSON.parse(JSON.stringify(session));
+    const slot = ChartsManager.extractTrainingSlot(session);
+
+    const idEl = document.getElementById("edit-hist-id");
+    const nameEl = document.getElementById("edit-hist-name");
+    const weekEl = document.getElementById("edit-hist-week");
+    const dayEl = document.getElementById("edit-hist-day");
+    const durEl = document.getElementById("edit-hist-duration");
+
+    if (idEl) idEl.value = session.id;
+    if (nameEl) nameEl.value = session.routineName || "";
+    if (weekEl) weekEl.value = slot.week > 0 ? String(slot.week) : "";
+    if (dayEl) dayEl.value = slot.day > 0 ? String(slot.day) : "";
+    if (durEl) durEl.value = session.durationMinutes || 60;
+
+    this.renderHistoryEditorExercises();
+    const modal = document.getElementById("modal-history-editor");
+    if (modal) modal.classList.add("open");
+  },
+
+  renderHistoryEditorExercises() {
+    const container = document.getElementById("editor-history-exercises-list");
+    if (!container || !this.currentHistoryEditorSession) return;
+
+    const exercises = this.currentHistoryEditorSession.exercises || [];
+    if (exercises.length === 0) {
+      container.innerHTML = `<p style="font-size: 0.84rem; color: var(--text-muted); text-align: center; padding: 14px;">Nessun esercizio in questa sessione. Clicca "+ Aggiungi Esercizio".</p>`;
+      return;
+    }
+
+    container.innerHTML = exercises.map((ex, exIdx) => {
+      const mGroup = detectMuscleGroup(ex.name);
+      const qTags = Array.isArray(ex.quickTags) ? ex.quickTags : [];
+      const quickTagsHtml = this.QUICK_TAGS.map(t => {
+        const isSelected = qTags.includes(t.label);
+        return `
+          <button type="button" class="quick-tag-chip tag-${t.type} ${isSelected ? 'active' : ''}"
+            onclick="App.toggleHistoryEditorQuickTag(${exIdx}, '${t.label}')">
+            <span>${t.emoji}</span><span>${t.short}</span>
+          </button>
+        `;
+      }).join("");
+
+      const setsHtml = (ex.sets || []).map((s, sIdx) => `
+        <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 0.76rem; font-weight: 700; color: var(--text-muted); width: 22px;">S${sIdx + 1}</span>
+          <input type="number" inputmode="decimal" class="input-stepper" style="height: 32px; width: 68px;" value="${s.weight}" step="0.25" onchange="App.updateHistoryEditorSet(${exIdx}, ${sIdx}, 'weight', this.value)">
+          <span style="font-size: 0.74rem; color: var(--text-muted);">kg ×</span>
+          <input type="number" inputmode="numeric" class="input-stepper" style="height: 32px; width: 54px;" value="${s.reps}" step="1" onchange="App.updateHistoryEditorSet(${exIdx}, ${sIdx}, 'reps', this.value)">
+          <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--text-secondary); cursor: pointer; margin-left: auto;">
+            <input type="checkbox" ${s.completed ? 'checked' : ''} onchange="App.updateHistoryEditorSet(${exIdx}, ${sIdx}, 'completed', this.checked)" style="width: 17px; height: 17px;">
+            <span>✓</span>
+          </label>
+          <button type="button" class="icon-btn" style="width: 28px; height: 28px; color: var(--accent-red);" onclick="App.removeHistoryEditorSet(${exIdx}, ${sIdx})">✕</button>
+        </div>
+      `).join("");
+
+      return `
+        <div class="card" style="margin-bottom: 10px; padding: 12px; background-color: var(--bg-card);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+              ${Anatomy.getSvg(mGroup, 26, 32, ex.name)}
+              <div style="min-width: 0;">
+                <strong style="font-size: 0.9rem; display: block;">${this.escapeHtml(ex.name)}</strong>
+                <span style="font-size: 0.7rem; color: var(--accent-blue); font-weight: 600;">${mGroup}</span>
+              </div>
+            </div>
+            <button type="button" class="icon-btn" style="width: 30px; height: 30px; color: var(--accent-red);" onclick="App.removeHistoryEditorExercise(${exIdx})" title="Rimuovi esercizio">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+            </button>
+          </div>
+
+          <div class="quick-tags-scroll" style="padding-bottom: 6px;">
+            ${quickTagsHtml}
+          </div>
+
+          <textarea class="form-textarea" rows="2" style="padding: 6px 8px; font-size: 0.8rem; margin-bottom: 8px;" placeholder="Note sulla serie, dolore, stanchezza..." onchange="App.updateHistoryEditorNotes(${exIdx}, this.value)">${this.escapeHtml(ex.notes || '')}</textarea>
+
+          ${setsHtml}
+
+          <button type="button" class="btn-add-set" onclick="App.addHistoryEditorSet(${exIdx})">
+            + Aggiungi Serie
+          </button>
+        </div>
+      `;
+    }).join("");
+  },
+
+  toggleHistoryEditorQuickTag(exIdx, tagLabel) {
+    const ex = this.currentHistoryEditorSession && this.currentHistoryEditorSession.exercises[exIdx];
+    if (!ex) return;
+    ex.quickTags = Array.isArray(ex.quickTags) ? ex.quickTags : [];
+    const idx = ex.quickTags.indexOf(tagLabel);
+    if (idx >= 0) ex.quickTags.splice(idx, 1);
+    else ex.quickTags.push(tagLabel);
+    this.renderHistoryEditorExercises();
+  },
+
+  updateHistoryEditorNotes(exIdx, val) {
+    const ex = this.currentHistoryEditorSession && this.currentHistoryEditorSession.exercises[exIdx];
+    if (ex) ex.notes = val;
+  },
+
+  updateHistoryEditorSet(exIdx, sIdx, field, val) {
+    const ex = this.currentHistoryEditorSession && this.currentHistoryEditorSession.exercises[exIdx];
+    if (ex && ex.sets && ex.sets[sIdx]) {
+      ex.sets[sIdx][field] = field === "completed" ? !!val : (Number(val) || 0);
+    }
+  },
+
+  addHistoryEditorSet(exIdx) {
+    const ex = this.currentHistoryEditorSession && this.currentHistoryEditorSession.exercises[exIdx];
+    if (!ex) return;
+    ex.sets = ex.sets || [];
+    const last = ex.sets[ex.sets.length - 1] || { weight: 50, reps: 8 };
+    ex.sets.push({
+      setNumber: ex.sets.length + 1,
+      weight: last.weight,
+      reps: last.reps,
+      completed: true
+    });
+    this.renderHistoryEditorExercises();
+  },
+
+  removeHistoryEditorSet(exIdx, sIdx) {
+    const ex = this.currentHistoryEditorSession && this.currentHistoryEditorSession.exercises[exIdx];
+    if (!ex || !ex.sets) return;
+    ex.sets.splice(sIdx, 1);
+    ex.sets.forEach((s, i) => { s.setNumber = i + 1; });
+    this.renderHistoryEditorExercises();
+  },
+
+  removeHistoryEditorExercise(exIdx) {
+    if (!this.currentHistoryEditorSession || !this.currentHistoryEditorSession.exercises) return;
+    this.currentHistoryEditorSession.exercises.splice(exIdx, 1);
+    this.renderHistoryEditorExercises();
+  },
+
+  saveHistoryFromEditor() {
+    if (!this.currentHistoryEditorSession) return;
+
+    const nameVal = (document.getElementById("edit-hist-name")?.value || "").trim();
+    const weekStr = document.getElementById("edit-hist-week")?.value || "";
+    const dayStr = document.getElementById("edit-hist-day")?.value || "";
+    const durVal = Math.max(1, parseInt(document.getElementById("edit-hist-duration")?.value, 10) || 60);
+
+    const sess = this.currentHistoryEditorSession;
+    sess.routineName = nameVal || sess.routineName || "Allenamento";
+    sess.week = weekStr ? parseInt(weekStr, 10) : null;
+    sess.dayNumber = dayStr ? parseInt(dayStr, 10) : null;
+    sess.durationMinutes = durVal;
+
+    // Ricalcola routineId se settimana/giorno corrispondono a una scheda del programma
+    if (sess.week && sess.dayNumber) {
+      const matched = Store.getRoutines().find(r => Number(r.week) === sess.week && Number(r.dayNumber) === sess.dayNumber);
+      if (matched) sess.routineId = matched.id;
+    }
+
+    // Ricalcola volume totale dalle serie completate
+    let totalVol = 0;
+    (sess.exercises || []).forEach(ex => {
+      (ex.sets || []).forEach((s, i) => {
+        s.setNumber = i + 1;
+        if (s.completed) totalVol += (Number(s.weight) || 0) * (Number(s.reps) || 0);
+      });
+    });
+    sess.totalVolumeKg = Math.round(totalVol * 10) / 10;
+
+    Store.updateHistorySession(sess);
+    this.currentHistoryEditorSession = null;
+    this.closeModal("modal-history-editor");
+
+    this.renderHistoryList();
+    this.renderRoutines();
+    ChartsManager.populateSelectors();
+    ChartsManager.renderCurrentCharts();
+    this.showToast("✓ Sessione modificata e sincronizzata sul cloud!");
   },
 
   // ================= 6. MODALI, IMPOSTAZIONI & BACKUP =================
@@ -1657,6 +1864,12 @@ const App = {
         if (typeof ReportManager !== "undefined") ReportManager.downloadPdf(true);
       });
     }
+
+    const btnSaveHistEdit = document.getElementById("btn-save-history-edit");
+    if (btnSaveHistEdit) btnSaveHistEdit.addEventListener("click", () => this.saveHistoryFromEditor());
+
+    const btnHistAddEx = document.getElementById("btn-hist-editor-add-exercise");
+    if (btnHistAddEx) btnHistAddEx.addEventListener("click", () => this.openExercisePicker("history_editor"));
   },
 
   closeModal(modalId) {

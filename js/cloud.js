@@ -142,11 +142,18 @@ const CloudSync = {
         localHasNewerOrExtra = true;
       } else {
         const existing = mergedMap.get(s.id);
-        const localSets = (s.exercises || []).reduce((acc, e) => acc + (e.sets ? e.sets.length : 0), 0);
-        const remoteSets = (existing.exercises || []).reduce((acc, e) => acc + (e.sets ? e.sets.length : 0), 0);
-        if (localSets > remoteSets) {
+        const localUpd = new Date(s.updatedAt || 0).getTime();
+        const remoteUpd = new Date(existing.updatedAt || 0).getTime();
+        if (localUpd > remoteUpd) {
           mergedMap.set(s.id, s);
           localHasNewerOrExtra = true;
+        } else if (localUpd === remoteUpd) {
+          const localSets = (s.exercises || []).reduce((acc, e) => acc + (e.sets ? e.sets.length : 0), 0);
+          const remoteSets = (existing.exercises || []).reduce((acc, e) => acc + (e.sets ? e.sets.length : 0), 0);
+          if (localSets > remoteSets) {
+            mergedMap.set(s.id, s);
+            localHasNewerOrExtra = true;
+          }
         }
       }
     });

@@ -196,6 +196,19 @@ const Store = {
     this.setHistory(history);
   },
 
+  updateHistorySession(updatedSession) {
+    const history = this.getHistory();
+    const idx = history.findIndex(h => h.id === updatedSession.id);
+    updatedSession.updatedAt = new Date().toISOString();
+    if (idx >= 0) {
+      history[idx] = updatedSession;
+    } else {
+      history.unshift(updatedSession);
+    }
+    this.setHistory(history);
+    return updatedSession;
+  },
+
   saveWorkoutSession(session, updateRoutineDefaults = true) {
     const history = this.getHistory();
     history.unshift(session);
