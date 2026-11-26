@@ -1795,3 +1795,49 @@ input, textarea {
   color: #93c5fd;
   border: 1px solid rgba(59, 130, 246, 0.35);
 }
+
+
+/* ==========================================================================
+   MODALITÀ DEMO (SOLA LETTURA ?demo=1)
+   ========================================================================== */
+.cloud-sync-pill.demo {
+  background-color: rgba(139, 92, 246, 0.18);
+  border-color: rgba(139, 92, 246, 0.45);
+  color: #c4b5fd;
+}
+
+.cloud-sync-pill.demo .cloud-dot {
+  background-color: #8b5cf6;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.8);
+}
+
+.demo-mode-banner {
+  background: linear-gradient(90deg, rgba(109, 40, 217, 0.28), rgba(59, 130, 246, 0.22));
+  border-bottom: 1px solid rgba(139, 92, 246, 0.4);
+  color: #e9d5ff;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  padding: 8px 14px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Nasconde controlli di modifica/eliminazione in Modalità Demo */
+body.demo-mode #btn-create-routine,
+body.demo-mode .routine-header .icon-btn,
+body.demo-mode .history-item-header .icon-btn,
+body.demo-mode #btn-add-exercise-to-active,
+body.demo-mode #btn-start-quick-workout,
+body.demo-mode #btn-reset-sample-data,
+body.demo-mode #btn-sync-now,
+body.demo-mode .exercise-title-line .icon-btn {
+  display: none !important;
+}
+
+body.demo-mode #btn-finish-workout {
+  opacity: 0.65;
+  background-color: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
