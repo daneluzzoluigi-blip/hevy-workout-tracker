@@ -408,7 +408,8 @@ const ReportManager = {
         const qTags = Array.isArray(ex.quickTags) ? ex.quickTags : [];
         const tagsPrefix = qTags.length > 0 ? `[${qTags.join(", ")}]` : "";
         const combinedNotes = [tagsPrefix, (ex.notes || "").trim()].filter(Boolean).join(" ");
-        const evaluation = this.evaluateExercise(target, ex.sets, combinedNotes, isFreeSession);
+        const isExplicitOffProg = qTags.some(t => /fuori programma/i.test(t)) || /fuori programma/i.test(ex.notes || "");
+        const evaluation = this.evaluateExercise(target, ex.sets, combinedNotes, isFreeSession || isExplicitOffProg);
         const doneSets = (ex.sets || []).filter(s => s.completed);
 
         doneSets.forEach(s => {

@@ -21,6 +21,7 @@ const App = {
 
   QUICK_TAGS: [
     { label: "Stanchezza", short: "Stanchezza", emoji: "😴", type: "fatigue" },
+    { label: "Fuori programma", short: "Fuori prog.", emoji: "⚡", type: "info" },
     { label: "Dolore gomiti", short: "Gomiti", emoji: "🤕", type: "pain" },
     { label: "Mal di schiena", short: "Schiena", emoji: "🤕", type: "pain" },
     { label: "Fastidio braccio", short: "Braccio", emoji: "🤕", type: "pain" },

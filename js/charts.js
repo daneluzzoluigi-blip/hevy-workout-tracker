@@ -214,13 +214,71 @@ const ChartsManager = {
   },
 
   /**
+   * Riconosce i 3 fondamentali (Panca Piana, Stacco, Squat con bilanciere)
+   * escludendo macchine/complementari (es. Hack Squat, Panca Inclinata Manubri, Curl su Panca).
+   */
+  isFundamentalLift(exerciseName = "") {
+    const n = String(exerciseName).toLowerCase().trim();
+    if (!n) return false;
+    if (/panca\s*piana|barbell\s*bench/i.test(n)) return true;
+    if (/stacco\s*(sumo|da\s*terra)|barbell\s*deadlift|sumo\s*deadlift/i.test(n)) return true;
+    if (/squat/i.test(n) && !/hack|bulgar|goblet|split|front/i.test(n)) return true;
+    return false;
+  },
+
+  /**
+   * Determina se un esercizio fondamentale registrato in una sessione è "Fuori Programma"
+   * e quindi da NON mostrare nei grafici di progressione.
+   */
+  isOffProgramFundamental(session, ex, isDuplicateSlot = false) {
+    if (!ex || !this.isFundamentalLift(ex.name)) return false;
+
+    const slot = this.extractTrainingSlot(session);
+    const qTags = Array.isArray(ex.quickTags) ? ex.quickTags : [];
+    const notesStr = (ex.notes || "").toLowerCase();
+
+    // 1. Tag esplicito "Fuori programma" o nota testuale
+    if (qTags.some(t => /fuori programma/i.test(t)) || /fuori programma/i.test(notesStr)) {
+      return true;
+    }
+
+    // 2. Sessione libera (senza settimana) o sessione doppia/extra sullo stesso giorno già loggato
+    if (slot.week === 0 || isDuplicateSlot) {
+      return true;
+    }
+
+    // 3. Controlla contro la scheda originale di quel (Settimana, Giorno)
+    if (typeof ReportManager !== "undefined" && ReportManager.getOriginalProgrammedExercise) {
+      const target = ReportManager.getOriginalProgrammedExercise(slot.week, slot.day, ex.name, session.routineId);
+      // Fondamentale fatto in un giorno in cui non era programmato
+      if (!target || !target.sets || target.sets.length === 0) {
+        return true;
+      }
+      // Test/massimale fuori protocollo: carico >= +20% rispetto al massimo programmato nella settimana
+      const maxTargetW = Math.max(...target.sets.map(s => Number(s.weight) || 0));
+      const validSets = (ex.sets || []).filter(s => s.completed && Number(s.weight) > 0);
+      if (maxTargetW > 0 && validSets.length > 0) {
+        const maxActualW = Math.max(...validSets.map(s => Number(s.weight)));
+        if (maxActualW >= maxTargetW * 1.2) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  },
+
+  /**
    * Grafico Esercizio: Carico Massimo (kg) e 1RM stimato (Epley) per Settimana & Giorno
+   * Esclude automaticamente eventuali sessioni fuori programma sui fondamentali (Panca, Stacco, Squat).
    */
   renderExerciseChart(exerciseName, metric = "both") {
     const history = Store.getHistory();
     const ordered = this.sortByTrainingCalendar(history);
 
     const entries = [];
+    const seenSlots = new Set();
+    let excludedOffProgCount = 0;
     let allTimeMaxWeight = 0;
     let allTimeMax1RM = 0;
 
@@ -228,8 +286,18 @@ const ChartsManager = {
       if (!session.exercises) return;
       const ex = session.exercises.find(e => Store.isExerciseNameMatch(e.name, exerciseName));
       if (ex && ex.sets) {
+        const slot = this.extractTrainingSlot(session);
+        const slotKey = slot.week > 0 ? `S${slot.week}_G${slot.day}` : null;
+        const isDuplicateSlot = slotKey ? seenSlots.has(slotKey) : false;
+
+        if (this.isOffProgramFundamental(session, ex, isDuplicateSlot)) {
+          excludedOffProgCount++;
+          return;
+        }
+
         const validSets = ex.sets.filter(s => s.completed && Number(s.weight) > 0);
         if (validSets.length > 0) {
+          if (slotKey) seenSlots.add(slotKey);
           const maxW = Math.max(...validSets.map(s => Number(s.weight)));
           let sessionMax1RM = 0;
           validSets.forEach(s => {
@@ -240,7 +308,6 @@ const ChartsManager = {
           if (maxW > allTimeMaxWeight) allTimeMaxWeight = maxW;
           if (sessionMax1RM > allTimeMax1RM) allTimeMax1RM = sessionMax1RM;
 
-          const slot = this.extractTrainingSlot(session);
           entries.push({
             week: slot.week,
             day: slot.day,
@@ -270,10 +337,13 @@ const ChartsManager = {
 
     if (badgeEl) {
       const suggestion = Store.getProgressiveOverloadSuggestion(exerciseName);
+      const offNote = excludedOffProgCount > 0
+        ? `<span class="badge-neutral" style="margin-left: 4px; font-size: 0.66rem;" title="Sessioni fuori programma escluse dal grafico">${excludedOffProgCount} fuori prog. escl.</span>`
+        : "";
       if (suggestion) {
-        badgeEl.innerHTML = `<span class="badge-progression">⚡ ${suggestion.text}</span>`;
+        badgeEl.innerHTML = `<span class="badge-progression">⚡ ${suggestion.text}</span>${offNote}`;
       } else {
-        badgeEl.innerHTML = `<span class="badge-neutral">In attesa di dati</span>`;
+        badgeEl.innerHTML = `<span class="badge-neutral">In attesa di dati</span>${offNote}`;
       }
     }
 
@@ -393,6 +463,7 @@ const ChartsManager = {
     const ordered = this.sortByTrainingCalendar(history);
 
     const entries = [];
+    const seenVolSlots = new Set();
     let totalVolumeSum = 0;
     let maxVolume = 0;
 
@@ -408,11 +479,18 @@ const ChartsManager = {
         }
       }
 
-      const vol = session.totalVolumeKg || Store.calculateVolume(
-        (session.exercises || []).flatMap(e => e.sets || [])
-      );
+      const slotKey = slot.week > 0 ? `S${slot.week}_G${slot.day}` : null;
+      const isDuplicateSlot = slotKey ? seenVolSlots.has(slotKey) : false;
+
+      // Calcola il volume escludendo eventuali fondamentali (Panca/Stacco/Squat) fatti fuori programma
+      const eligibleSets = (session.exercises || []).flatMap(ex => {
+        if (this.isOffProgramFundamental(session, ex, isDuplicateSlot)) return [];
+        return ex.sets || [];
+      });
+      const vol = Store.calculateVolume(eligibleSets);
       if (vol <= 0) return;
 
+      if (slotKey) seenVolSlots.add(slotKey);
       entries.push({
         week: slot.week,
         day: slot.day,
